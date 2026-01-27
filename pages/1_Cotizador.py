@@ -57,7 +57,7 @@ merma_papel = float(cfg["papel"]["merma"])
 margen = float(cfg["margen"]["margen"])
 
 # (Opcional pero recomendado) Mostrar resumen arriba para transparencia
-'''
+
 with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
     st.write({
         "MO+Dep": mo_dep,
@@ -69,7 +69,7 @@ with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
         "Merma papel": merma_papel,
         "Margen": margen,
     })
-'''
+
 
 
 # ---------------------------------
