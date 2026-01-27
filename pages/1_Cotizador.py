@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from lib.auth import require_role
 
 ROOT = Path(__file__).resolve().parents[1]  # carpeta revoria_app
 if str(ROOT) not in sys.path:
@@ -15,6 +16,7 @@ from lib.config_store import get_config
 # Config
 # ---------------------------------
 st.set_page_config(page_title="Cotizador Fujifilm Revoria / Offset Santiago", layout="centered")
+require_role({"admin", "sales"})
 
 st.markdown("""
 <style>

@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from lib.auth import require_role
 
 ROOT = Path(__file__).resolve().parents[1]  # carpeta revoria_app
 if str(ROOT) not in sys.path:
@@ -9,6 +10,7 @@ import streamlit as st
 from lib.config_store import get_config, reset_config, save_config
 
 st.set_page_config(page_title="Configuración", layout="centered")
+require_role({"admin"})
 
 st.title("Configuración de costos (Admin)")
 st.caption("Estos valores alimentan el cotizador. Por ahora se guardan en memoria (session).")
