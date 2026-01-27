@@ -2,6 +2,8 @@ import copy
 import json
 from pathlib import Path
 import streamlit as st
+from typing import Optional, Dict, Any
+
 
 DATA_DIR = Path("data")
 DEFAULT_PATH = DATA_DIR / "config.default.json"
@@ -17,7 +19,7 @@ DEFAULT_CONFIG = {
 def _ensure_data_dir():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-def _load_json(path: Path) -> dict | None:
+def _load_json(path: Path) -> Optional[Dict[str, Any]]:
     if not path.exists():
         return None
     try:
