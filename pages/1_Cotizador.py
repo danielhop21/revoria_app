@@ -1,5 +1,7 @@
 import math
 import streamlit as st
+from lib.config_store import get_config
+
 
 # ---------------------------------
 # Config
@@ -39,24 +41,36 @@ st.title("Cotizador Fujifilm Revoria / Offset Santiago")
 st.caption("Impresión escala por área vs Carta. Papel y cubicación usan hoja 48×33 y huella 47.4×32.4 (defaults).")
 
 # ---------------------------------
-# Sidebar: parámetros
+# Config (desde Configuración)
 # ---------------------------------
-with st.sidebar:
-    st.header("Impresión (por Carta – 1 lado)")
-    mo_dep = st.number_input("MO + Depreciación", min_value=0.0, value=0.06, step=0.01, format="%.4f")
-    tinta = st.number_input("Tinta CMYK", min_value=0.0, value=0.39, step=0.01, format="%.4f")
-    click = st.number_input("Click servicio", min_value=0.0, value=0.35, step=0.01, format="%.4f")
-    cobertura = st.number_input("Cobertura", min_value=0.0, value=0.10, step=0.01, format="%.4f")
+cfg = get_config()
 
-    st.divider()
-    st.header("Papel")
-    papel_costo_kg = st.number_input("Costo papel ($/kg)", min_value=0.0, value=21.0, step=0.5, format="%.2f")
-    papel_gramaje = st.number_input("Gramaje (g/m²)", min_value=0.0, value=130.0, step=5.0, format="%.1f")
-    merma_papel = st.number_input("Merma papel (%)", min_value=0.0, value=0.0, step=0.5, format="%.1f") / 100.0
+mo_dep = float(cfg["impresion"]["mo_dep"])
+tinta = float(cfg["impresion"]["tinta"])
+click = float(cfg["impresion"]["click"])
+cobertura = float(cfg["impresion"]["cobertura"])
 
-    st.divider()
-    st.header("Margen")
-    margen = st.number_input("Margen (ej. 0.40 = 40%)", min_value=0.0, value=0.40, step=0.01, format="%.2f")
+papel_costo_kg = float(cfg["papel"]["costo_kg"])
+papel_gramaje = float(cfg["papel"]["gramaje"])
+merma_papel = float(cfg["papel"]["merma"])
+
+margen = float(cfg["margen"]["margen"])
+
+# (Opcional pero recomendado) Mostrar resumen arriba para transparencia
+'''
+with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
+    st.write({
+        "MO+Dep": mo_dep,
+        "Tinta": tinta,
+        "Click": click,
+        "Cobertura": cobertura,
+        "Papel $/kg": papel_costo_kg,
+        "Gramaje g/m²": papel_gramaje,
+        "Merma papel": merma_papel,
+        "Margen": margen,
+    })
+'''
+
 
 # ---------------------------------
 # Helpers
