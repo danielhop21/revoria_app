@@ -1,5 +1,5 @@
 import streamlit as st
-from lib.config_store import get_config, reset_config
+from lib.config_store import get_config, reset_config, save_config
 
 st.set_page_config(page_title="Configuración", layout="centered")
 
@@ -29,13 +29,20 @@ st.subheader("Margen")
 cfg["margen"]["margen"] = st.number_input("Margen (0.40 = 40%)", min_value=0.0, value=float(cfg["margen"]["margen"]), step=0.01, format="%.2f")
 
 st.divider()
+c1, c2, c3 = st.columns(3)
 
-c1, c2 = st.columns(2)
 with c1:
-    if st.button("Restablecer defaults"):
-        reset_config()
-        st.success("Configuración restablecida.")
+    if st.button("💾 Guardar configuración"):
+        save_config(cfg)
+        st.success("Configuración guardada.")
         st.rerun()
 
 with c2:
-    st.success("Guardado automático: los cambios quedan en sesión al momento.")
+    if st.button("↩️ Restablecer defaults"):
+        reset_config()
+        st.success("Restablecida.")
+        st.rerun()
+
+with c3:
+    st.info("Tip: guarda después de cambios grandes.")
+
