@@ -51,9 +51,7 @@ with c2:
     only_mine_default = True if role == "sales" else False
     only_mine = st.checkbox("Solo mis cotizaciones", value=only_mine_default)
 with c3:
-    search_code = st.text_input("Buscar por ID (quote_code)", placeholder="Q-20260128-153012-AB12")
-with c4:
-    search_user = st.text_input("Filtrar por usuario", placeholder="daniel / ventas1 (opcional)")
+    search_number = st.text_input("Buscar por No. de cotización", placeholder="00000")
 
 # -----------------------------
 # Lista
@@ -65,21 +63,45 @@ if df.empty:
     st.info("Aún no hay cotizaciones guardadas.")
     st.stop()
 
-# filtros client-side
-if search_code.strip():
-    df = df[df["quote_code"].astype(str).str.contains(search_code.strip(), case=False, na=False)]
+# -----------------------------
+# Dropdown de usuarios (desde los datos)
+# -----------------------------
+users = sorted([u for u in df["created_by"].dropna().unique().tolist() if str(u).strip()])
+user_options = ["(Todos)"] + users
 
-if search_user.strip():
-    df = df[df["created_by"].astype(str).str.contains(search_user.strip(), case=False, na=False)]
+search_user = st.selectbox(
+    "Filtrar por usuario",
+    options=user_options,
+    index=0,
+    key="user_filter"
+)
 
+# -----------------------------
+# Filtros client-side
+# -----------------------------
+# 1) Buscar por No. de cotización (en vez de ID)
+# Asegúrate de que arriba en Filtros tienes: search_number = st.text_input(...)
+if search_number.strip():
+    try:
+        n = int(search_number.strip())
+        df = df[df["quote_number"] == n]
+    except ValueError:
+        st.warning("El No. de cotización debe ser un número (ej. 154).")
+
+# 2) Filtrar por usuario (dropdown)
+if search_user != "(Todos)":
+    df = df[df["created_by"] == search_user]
+
+# -----------------------------
 # Formato simple para mostrar
+# -----------------------------
 df_show = df.copy()
 df_show["created_at"] = pd.to_datetime(df_show["created_at"]).dt.strftime("%Y-%m-%d %H:%M")
 df_show["price_unit"] = df_show["price_unit"].apply(money)
 df_show["price_total"] = df_show["price_total"].apply(money)
 
 st.subheader("Cotizaciones")
-st.caption("Tip: copia el ID y pégalo en el buscador si quieres abrir una específica rápido.")
+st.caption("Tip: busca por No. (ej. 154) o filtra por usuario.")
 
 st.dataframe(
     df_show,
