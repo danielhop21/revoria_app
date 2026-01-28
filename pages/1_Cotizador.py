@@ -1,6 +1,12 @@
 import sys
 from pathlib import Path
 from lib.auth import require_role
+import datetime as dt
+import secrets
+import string
+from lib.supa import get_supabase
+from lib.config_store import get_config
+
 
 ROOT = Path(__file__).resolve().parents[1]  # carpeta revoria_app
 if str(ROOT) not in sys.path:
@@ -16,6 +22,7 @@ from lib.config_store import get_config
 # Config
 # ---------------------------------
 st.set_page_config(page_title="Cotizador Fujifilm Revoria / Offset Santiago", layout="centered")
+cfg = get_config()
 require_role({"admin", "sales"})
 
 st.markdown("""
@@ -128,6 +135,11 @@ def paper_cost_for_sheet(w_cm: float, h_cm: float, gramaje_gm2: float, costo_kg:
     peso_kg = area_m2 * gramaje_gm2 / 1000.0
     costo_hoja = peso_kg * costo_kg
     return area_m2, peso_kg, costo_hoja
+
+def make_quote_code() -> str:
+    now = dt.datetime.now()
+    suffix = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+    return f"Q-{now:%Y%m%d-%H%M%S}-{suffix}"
 
 # ---------------------------------
 # Inputs principales
@@ -386,6 +398,104 @@ c7.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+st.divider()
+st.subheader("Guardar cotización")
+
+if "auth" not in st.session_state or not st.session_state.auth.get("is_logged", False):
+    st.warning("Inicia sesión desde Home para poder guardar cotizaciones.")
+else:
+    sb = get_supabase()
+
+    if st.button("💾 Guardar cotización en historial"):
+        quote_code = make_quote_code()
+        created_by = st.session_state.auth.get("user")
+        created_role = st.session_state.auth.get("role")
+
+        # Snapshot de configuración para que NO cambie el pasado
+        cfg_snapshot = cfg
+
+        # Inputs (lo que el usuario metió)
+        inputs_payload = {
+            "tipo_producto": tipo_producto,
+            "ancho_final_cm": float(ancho_final),
+            "alto_final_cm": float(alto_final),
+            "factor_carta": float(factor_carta),
+            "hoja_w_cm": float(hoja_w),
+            "hoja_h_cm": float(hoja_h),
+            "area_w_cm": float(area_w),
+            "area_h_cm": float(area_h),
+            "bleed_cm": float(bleed),
+            "gutter_cm": float(gutter),
+            "allow_rotate": bool(allow_rotate),
+            "piezas_por_lado": int(piezas_por_lado),
+            "orientacion": orientacion,
+        }
+
+        if tipo_producto == "Extendido":
+            inputs_payload.update({"tiraje_piezas": int(piezas), "lados": int(lados)})
+        else:
+            inputs_payload.update({
+                "tiraje_libros": int(libros),
+                "paginas_por_libro": int(paginas),
+                "paginas_totales": int(paginas_totales),
+                "lados": 2
+            })
+
+        # Breakdown con “fórmulas de 2 variables”
+        costo_unitario_carta_lado = float(mo_dep + tinta + click + cobertura)
+        costo_hoja_con_merma = float(costo_hoja * (1 + merma_papel))
+
+        breakdown_payload = {
+            "impresion": {
+                "unidades_carta_lado": float(unidades_carta_lado),
+                "costo_unitario_carta_lado": costo_unitario_carta_lado,
+                "formula": "total = unidades_carta_lado * costo_unitario_carta_lado",
+                "total": float(costo_impresion),
+            },
+            "papel": {
+                "hojas_fisicas": int(hojas_fisicas),
+                "costo_hoja_con_merma": costo_hoja_con_merma,
+                "formula": "total = hojas_fisicas * costo_hoja_con_merma",
+                "total": float(costo_papel),
+            },
+            "adicionales": {
+                "total": float(total_adicionales),
+                "formula": "total = suma(importes)",
+                "items": [
+                    {"concepto": r.get("Concepto", ""), "importe": float(r.get("Importe", 0.0))}
+                    for r in st.session_state.get("costos_adicionales", [])
+                    if str(r.get("Concepto", "")).strip()
+                ]
+            },
+            "totales": {
+                "subtotal_antes_margen": float(subtotal_costos),
+                "margen": float(margen),
+                "precio_unitario": float(precio_unitario),
+                "precio_total": float(precio_total),
+                "formula_precio": "precio_total = subtotal_antes_margen * (1 + margen)"
+            }
+        }
+
+        row = {
+            "quote_code": quote_code,
+            "created_by": created_by,
+            "created_role": created_role,
+            "customer_name": None,
+            "notes": None,
+            "price_unit": float(precio_unitario),
+            "price_total": float(precio_total),
+            "currency": "MXN",
+            "inputs": inputs_payload,
+            "breakdown": breakdown_payload,
+            "config_snapshot": cfg_snapshot
+        }
+
+        try:
+            sb.table("quotes").insert(row).execute()
+            st.success(f"Cotización guardada ✅ ID: {quote_code}")
+        except Exception as e:
+            st.error("No se pudo guardar en Supabase (revisa secrets / conexión).")
+            st.exception(e)
 
 # ---------------------------------
 # Texto copiable

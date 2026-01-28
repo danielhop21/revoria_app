@@ -1,3 +1,12 @@
+# Python cache
 __pycache__/
 *.pyc
+
+# Entorno virtual
+.venv/
+
+# Datos sensibles
 data/config.json
+
+# Secrets Streamlit (local)
+.streamlit/secrets.toml
