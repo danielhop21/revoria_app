@@ -19,8 +19,8 @@ st.title("Historial de cotizaciones")
 # -----------------------------
 def fetch_quotes(limit: int = 200, only_mine: bool = False):
     q = sb.table("quotes").select(
-        "quote_code, created_at, created_by, created_role, customer_name, price_unit, price_total, currency"
-    ).order("created_at", desc=True).limit(limit)
+        "quote_number, quote_code, created_at, created_by, created_role, customer_name, price_unit, price_total, currency"
+    ).order("quote_number", desc=True).limit(limit)
 
     if only_mine:
         q = q.eq("created_by", user)
@@ -86,6 +86,7 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     column_config={
+        "quote_number": st.column_config.NumberColumn("No."),
         "quote_code": st.column_config.TextColumn("ID"),
         "created_at": st.column_config.TextColumn("Fecha"),
         "created_by": st.column_config.TextColumn("Usuario"),
