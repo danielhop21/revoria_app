@@ -1,0 +1,12 @@
+[theme]
+base="light"
+primaryColor="#4F46E5"
+
+# ⬇️ más claro y editorial
+backgroundColor="#FAFAF9"
+secondaryBackgroundColor="#FFFFFF"
+
+# ⬇️ texto un poco menos duro
+textColor="#111827"
+
+font="sans serif"

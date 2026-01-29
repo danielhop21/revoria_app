@@ -1,46 +1,33 @@
 import sys
 from pathlib import Path
-from lib.auth import require_role
+import math
 import datetime as dt
 import secrets
 import string
-from lib.supa import get_supabase
-from lib.config_store import get_config
 
+import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[1]  # carpeta revoria_app
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-
-import math
-import streamlit as st
+from lib.auth import require_role
+from lib.supa import get_supabase
 from lib.config_store import get_config
+from lib.ui import inject_global_css, render_header, card_open, card_close, hr, section_open, section_close
 
 
 # ---------------------------------
-# Config
+# Config (SIEMPRE primero)
 # ---------------------------------
-st.set_page_config(page_title="Cotizador Fujifilm Revoria / Offset Santiago", layout="centered")
-cfg = get_config()
+st.set_page_config(page_title="Cotizador Revoria — Offset Santiago", layout="centered")
+inject_global_css()
 require_role({"admin", "sales"})
 
-st.markdown("""
-<style>
-.small-metric { 
-    font-size: 0.85rem; 
-    opacity: 0.90;
-    line-height: 1.2;
-}
-.small-metric b {
-    font-size: 0.85rem;
-}
-.small-metric .val {
-    font-size: 1.00rem;
-    font-weight: 600;
-}
-</style>
-""", unsafe_allow_html=True)
+render_header(
+    "Cotizador Revoria",
+    "Área vs Carta · Tabloide 48×33 · Huella 47.4×32.4"
+)
 
 
 # Base carta (cm) para costeo de impresión por "Carta-lado"
@@ -53,9 +40,6 @@ DEFAULT_HOJA_W = 48.0
 DEFAULT_HOJA_H = 33.0
 DEFAULT_AREA_W = 47.4
 DEFAULT_AREA_H = 32.4
-
-st.title("Cotizador Fujifilm Revoria / Offset Santiago")
-st.caption("Impresión escala por área vs Carta. Papel y cubicación usan hoja 48×33 y huella 47.4×32.4 (defaults).")
 
 # ---------------------------------
 # Config (desde Configuración)
@@ -234,7 +218,7 @@ if tipo_producto == "Extendido":
     # IMPRESIÓN (Carta-lado): piezas * factor_area * lados
     unidades_carta_lado = piezas * factor_carta * lados
 
-    # PAPEL (hojas físicas): rendimiento por hoja depende de lados
+    # PAPEL: tabloides físicos (independiente de frente/FyV)
     piezas_por_hoja = piezas_por_lado
     hojas_fisicas = math.ceil(piezas / piezas_por_hoja)
 
@@ -352,9 +336,9 @@ precio_total = subtotal_costos * (1 + margen)
 precio_unitario = precio_total / piezas
 
 # ---------------------------------
-# Resultados
+# Resultados (section))
 # ---------------------------------
-st.divider()
+section_open()
 st.subheader("Resultados")
 
 # IMPORTANTES (grandes)
@@ -364,7 +348,7 @@ with cA:
 with cB:
     st.metric("Precio total", f"${precio_total:,.2f}")
 
-st.divider()
+hr()
 
 c1, c2, c3, c4, c5 = st.columns(5)
 
@@ -393,6 +377,8 @@ c4.markdown(f"""
 
 c5.markdown(f"""... Costo impresión ...""", unsafe_allow_html=True)
 
+hr()
+
 # Otra fila chica
 c5, c6, c7 = st.columns(3)
 c5.markdown(f"""
@@ -416,8 +402,13 @@ c7.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+section_close()
+
 st.divider()
+
+section_open()
 st.subheader("Guardar cotización")
+
 
 if "auth" not in st.session_state or not st.session_state.auth.get("is_logged", False):
     st.warning("Inicia sesión desde Home para poder guardar cotizaciones.")
@@ -528,6 +519,7 @@ else:
         except Exception as e:
             st.error("No se pudo guardar en Supabase (revisa secrets / conexión).")
             st.exception(e)
+section_close()
 
 # ---------------------------------
 # Texto copiable
@@ -567,4 +559,7 @@ texto += (
     f"- Precio total: ${precio_total:,.2f}\n"
 )
 
+section_open()
+st.subheader("Texto para copiar")
 st.text_area("Texto para copiar (WhatsApp / correo)", value=texto, height=360)
+section_close()

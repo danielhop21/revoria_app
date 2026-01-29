@@ -1,21 +1,26 @@
 import sys
 from pathlib import Path
-from lib.auth import require_role
 
-ROOT = Path(__file__).resolve().parents[1]  # carpeta revoria_app
+import streamlit as st
+
+ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import streamlit as st
+from lib.auth import require_role
 from lib.config_store import get_config, reset_config, save_config
+from lib.ui import inject_global_css, render_header
 
-st.set_page_config(page_title="Configuración", layout="centered")
+st.set_page_config(page_title="Configuración — Offset Santiago", layout="centered")
+inject_global_css()
 require_role({"admin"})
-
-st.title("Configuración de costos (Admin)")
-st.caption("Estos valores alimentan el cotizador. Por ahora se guardan en memoria (session).")
+render_header(
+    "Configuración",
+    "Costos base (admin): impresión, papel y margen"
+)
 
 cfg = get_config()
+
 
 st.subheader("Impresión (por Carta – 1 lado)")
 cfg["impresion"]["mo_dep"] = st.number_input("MO + Depreciación", min_value=0.0, value=float(cfg["impresion"]["mo_dep"]), step=0.01, format="%.4f")

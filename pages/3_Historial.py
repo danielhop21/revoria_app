@@ -1,20 +1,24 @@
 import streamlit as st
 import pandas as pd
+
 from lib.supa import get_supabase
 from lib.auth import require_role
 from lib.exporter import build_quote_excel_bytes
 from lib.pdf_exporter import build_quote_pdf_bytes
+from lib.ui import inject_global_css, render_header, card_open, card_close, hr
 
-st.set_page_config(page_title="Historial", layout="wide")
-
-# Permisos: todos los roles que pueden ver historial
+st.set_page_config(page_title="Historial — Offset Santiago", layout="wide")
+inject_global_css()
 require_role({"admin", "cotizador", "sales"})
+
+render_header(
+    "Historial de cotizaciones",
+    "Busca, abre detalle y exporta PDF/Excel"
+)
 
 sb = get_supabase()
 role = st.session_state.auth.get("role")
 user = st.session_state.auth.get("user")
-
-st.title("Historial de cotizaciones")
 
 # -----------------------------
 # Helpers
@@ -179,16 +183,161 @@ if role in {"admin", "cotizador"}:
 else:
     st.info("Ventas puede descargar PDF (cliente). Excel solo admin/cotizador.")
 
-# Vista comercial (todos)
-cA, cB, cC, cD = st.columns(4)
-cA.metric("Precio unitario", money(row.get("price_unit")))
-cB.metric("Precio total", money(row.get("price_total")))
-cC.metric("Usuario", str(row.get("created_by")))
-cD.metric("Rol", str(row.get("created_role")))
+# -----------------------------
+# Job Card (Detalle)
+# -----------------------------
+inputs = row.get("inputs") or {}
+breakdown = row.get("breakdown") or {}
+tot = breakdown.get("totales") or {}
 
-st.write(f"**Fecha:** {str(row.get('created_at'))}")
-if row.get("customer_name"):
-    st.write(f"**Cliente:** {row.get('customer_name')}")
+tipo = inputs.get("tipo_producto", "")
+ancho = inputs.get("ancho_final_cm")
+alto = inputs.get("alto_final_cm")
+lados = inputs.get("lados", 2 if "Libro" in str(tipo) else 1)
+
+piezas_por_lado = inputs.get("piezas_por_lado")
+orient = inputs.get("orientacion")
+hojas_fisicas = inputs.get("hojas_fisicas") or (breakdown.get("papel", {}) or {}).get("hojas_fisicas")
+
+price_unit = tot.get("precio_unitario", row.get("price_unit"))
+price_total = tot.get("precio_total", row.get("price_total"))
+
+role = st.session_state.auth.get("role", "")
+created_by = str(row.get("created_by") or "")
+created_role = str(row.get("created_role") or "")
+created_at = str(row.get("created_at") or "")
+
+def fmt_cm(x):
+    try:
+        return f"{float(x):.1f}"
+    except Exception:
+        return ""
+
+# Tiraje / impresión legible
+if tipo == "Extendido":
+    tiraje_txt = f"{inputs.get('tiraje_piezas', '')} pzas"
+    imp_txt = "Frente" if int(lados) == 1 else "Frente y vuelta"
+else:
+    tiraje_txt = f"{inputs.get('tiraje_libros', '')} libros"
+    pags = inputs.get("paginas_por_libro")
+    if pags:
+        tiraje_txt += f" · {pags} pág"
+    imp_txt = "Frente y vuelta"
+
+# Card
+card_open()
+
+colL, colR = st.columns([3, 2], vertical_alignment="center")
+with colL:
+    st.markdown(
+        f"""
+        <div class="h1">Cotización {row['quote_code']}</div>
+        <div class="sub">{tipo} · {fmt_cm(ancho)} × {fmt_cm(alto)} cm · {tiraje_txt}</div>
+        <div style="margin-top:10px;">
+          <span class="pill">Impresión: {imp_txt}</span>
+          <span class="pill">UP: {piezas_por_lado} ({orient})</span>
+          <span class="pill">Tabloides: {hojas_fisicas}</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with colR:
+    st.markdown(
+        f"""
+        <div class="small-metric"><b>Precio unitario</b><br><span class="val">{money(price_unit)}</span></div>
+        <div style="height:10px;"></div>
+        <div class="small-metric"><b>Precio total</b><br><span class="val">{money(price_total)}</span></div>
+        """,
+        unsafe_allow_html=True
+    )
+
+hr()
+
+# Action bar (PDF primero = primario)
+st.markdown('<div class="actionbar">', unsafe_allow_html=True)
+a1, a2 = st.columns([1.2, 1.0], vertical_alignment="center")
+
+with a1:
+    # PDF cliente: sales + admin/cotizador
+    if role in {"admin", "cotizador", "sales"}:
+        pdf_bytes = build_quote_pdf_bytes(row)
+        st.download_button(
+            label="📄 PDF cliente",
+            data=pdf_bytes,
+            file_name=f"Cotizacion_{row['quote_code']}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+
+with a2:
+    # Excel técnico: solo admin/cotizador
+    if role in {"admin", "cotizador"}:
+        excel_bytes = build_quote_excel_bytes(row, role=role)
+        st.download_button(
+            label="📊 Excel técnico",
+            data=excel_bytes,
+            file_name=f"Cotizacion_{row['quote_code']}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    else:
+        st.caption("Excel: solo admin/cotizador")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+hr()
+
+# Tabs: Comercial vs Técnico
+tab1, tab2 = st.tabs(["🧾 Comercial", "🛠️ Técnico"])
+
+with tab1:
+    cA, cB, cC, cD = st.columns(4)
+    cA.metric("Precio unitario", money(row.get("price_unit")))
+    cB.metric("Precio total", money(row.get("price_total")))
+    cC.metric("Usuario", created_by)
+    cD.metric("Rol", created_role)
+
+    if created_at:
+        st.write(f"**Fecha:** {created_at}")
+    if row.get("customer_name"):
+        st.write(f"**Cliente:** {row.get('customer_name')}")
+    if row.get("notes"):
+        st.write(f"**Notas:** {row.get('notes')}")
+
+with tab2:
+    if role not in {"admin", "cotizador"}:
+        st.info("Vista técnica disponible solo para admin/cotizador.")
+    else:
+        papel = breakdown.get("papel", {}) or {}
+        imp = breakdown.get("impresion", {}) or {}
+        adic = breakdown.get("adicionales", {}) or {}
+
+        st.write("### Operación")
+        st.write({
+            "Carta-lado (facturable)": imp.get("unidades_carta_lado"),
+            "Clicks máquina": inputs.get("clicks_maquina") or imp.get("clicks_maquina"),
+            "Tabloides (papel)": hojas_fisicas,
+            "UP por lado": piezas_por_lado,
+            "Orientación": orient,
+            "Huella (cm)": f"{inputs.get('area_w_cm')} x {inputs.get('area_h_cm')}",
+            "Hoja (cm)": f"{inputs.get('hoja_w_cm')} x {inputs.get('hoja_h_cm')}",
+            "Bleed (cm)": inputs.get("bleed_cm"),
+            "Gutter (cm)": inputs.get("gutter_cm"),
+        })
+
+        st.write("### Costos (resumen)")
+        st.write({
+            "Impresión": imp.get("total"),
+            "Papel": papel.get("total"),
+            "Adicionales": adic.get("total"),
+            "Subtotal antes margen": tot.get("subtotal_antes_margen"),
+            "Margen": tot.get("margen"),
+            "Precio total": tot.get("precio_total"),
+        })
+
+card_close()
+
 
 # -----------------------------
 # Permisos de detalle
