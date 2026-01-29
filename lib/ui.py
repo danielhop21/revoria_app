@@ -165,7 +165,7 @@ def render_header(title: str, subtitle: str | None = None) -> None:
     cols = st.columns([1.2, 6], vertical_alignment="center")
     with cols[0]:
         if LOGO_PATH.exists():
-            st.image(str(LOGO_PATH), use_container_width=True)
+            st.image(str(LOGO_PATH), width=150)
         else:
             st.write("Offset Santiago")
     with cols[1]:
