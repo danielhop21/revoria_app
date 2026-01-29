@@ -109,6 +109,36 @@ def inject_global_css() -> None:
         margin: 0;
         letter-spacing: -0.2px;
       }
+      /* ==============================
+        Inputs (login, text, password)
+        ============================== */
+
+      /* Contenedor del input (Streamlit / BaseWeb) */
+      div[data-baseweb="input"] > div {
+        background-color: rgba(17, 24, 39, 0.07) !important;   /* ⬅️ MÁS OSCURO */
+        border: 1px solid rgba(17, 24, 39, 0.35) !important;   /* ⬅️ borde visible */
+        border-radius: 10px !important;
+      }
+  
+      /* Texto dentro del input */
+      input {
+        background-color: transparent !important;
+        color: #111827 !important;
+        font-weight: 500;
+      }
+
+      /* Placeholder */
+      input::placeholder {
+        color: rgba(17, 24, 39, 0.55) !important;
+      }
+
+      /* Focus */
+      div[data-baseweb="input"] > div:focus-within {
+        background-color: rgba(17, 24, 39, 0.14) !important;   /* ⬅️ aún más oscuro */
+        border: 1px solid rgba(79, 70, 229, 0.55) !important;
+        box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.18) !important;
+      }
+      
     </style>
     """, unsafe_allow_html=True)
 
