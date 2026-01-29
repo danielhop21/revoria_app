@@ -4,7 +4,7 @@ from lib.ui import inject_global_css, render_header, card_open, card_close, sect
 
 st.set_page_config(page_title="Revoria App — Offset Santiago", layout="centered")
 inject_global_css()
-render_header("Revoria App", "Acceso y navegación")
+render_header("Cotizador Revoria", "Acceso y navegación")
 
 login_box()
 
