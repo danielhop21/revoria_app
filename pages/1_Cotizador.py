@@ -106,22 +106,27 @@ def calc_piezas_por_lado(
     allow_rotate: bool,
 ) -> tuple[int, str, float, float]:
     """
-    Cubicación simple:
-    - Tamaño efectivo = pieza + 2*bleed + gutter (aprox)
-    - fit normal y fit rotado (si aplica)
+    Cubicación:
+    - Tamaño efectivo por pieza = pieza + 2*bleed
+    - Considera gutter entre piezas con aproximación: floor((W+g)/(w+g))
     Retorna: (piezas_por_lado, orientacion, w_eff, h_eff)
     """
-    w_eff = pieza_w_cm + 2 * bleed_cm + gutter_cm
-    h_eff = pieza_h_cm + 2 * bleed_cm + gutter_cm
+    w_eff = pieza_w_cm + 2 * bleed_cm
+    h_eff = pieza_h_cm + 2 * bleed_cm
 
     if w_eff <= 0 or h_eff <= 0:
         return 0, "Inválido", w_eff, h_eff
 
-    fit1 = int(area_w_cm // w_eff) * int(area_h_cm // h_eff)
+    def fit(area_w: float, area_h: float, w: float, h: float, g: float) -> int:
+        nx = int((area_w + g) // (w + g)) if (w + g) > 0 else 0
+        ny = int((area_h + g) // (h + g)) if (h + g) > 0 else 0
+        return max(nx, 0) * max(ny, 0)
+
+    fit1 = fit(area_w_cm, area_h_cm, w_eff, h_eff, gutter_cm)
 
     fit2 = 0
     if allow_rotate:
-        fit2 = int(area_w_cm // h_eff) * int(area_h_cm // w_eff)
+        fit2 = fit(area_w_cm, area_h_cm, h_eff, w_eff, gutter_cm)
 
     if fit2 > fit1:
         return fit2, "Rotado 90°", w_eff, h_eff
@@ -230,7 +235,7 @@ if tipo_producto == "Extendido":
     unidades_carta_lado = piezas * factor_carta * lados
 
     # PAPEL (hojas físicas): rendimiento por hoja depende de lados
-    piezas_por_hoja = piezas_por_lado if lados == 1 else piezas_por_lado * 2
+    piezas_por_hoja = piezas_por_lado
     hojas_fisicas = math.ceil(piezas / piezas_por_hoja)
 
     descripcion_producto = "Extendido"
@@ -257,6 +262,17 @@ else:
     # PAPEL (FyV): páginas por hoja FyV = piezas_por_lado * 2
     paginas_por_hoja_fyv = piezas_por_lado * 2
     hojas_fisicas = math.ceil(paginas_totales / paginas_por_hoja_fyv)
+
+# ---------------------------------
+# Clicks: máquina vs facturable
+# ---------------------------------
+if tipo_producto == "Extendido":
+    clicks_maquina = int(hojas_fisicas) * int(lados)     # tabloide-lado
+    clicks_facturable = float(unidades_carta_lado)       # carta-lado
+else:
+    # Libro / interiores: siempre FyV
+    clicks_maquina = int(hojas_fisicas) * 2              # tabloide-lado
+    clicks_facturable = float(unidades_carta_lado)       # carta-lado (por tu definición 1 pág = 1 lado)
 
 # ---------------------------------
 # Costos impresión
@@ -344,36 +360,32 @@ with cB:
 
 st.divider()
 
-# SECUNDARIOS (chicos)
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 
-c1.markdown(f"""
-<div class="small-metric">
-<b>Unidades Carta-lado</b><br>
-<span class="val">{unidades_carta_lado:,.2f}</span>
-</div>
-""", unsafe_allow_html=True)
+c1.markdown(f"""... Unidades Carta-lado ...""", unsafe_allow_html=True)
 
 c2.markdown(f"""
 <div class="small-metric">
-<b>Hojas físicas (papel)</b><br>
+<b>Tabloides (papel)</b><br>
 <span class="val">{hojas_fisicas:,.0f}</span>
 </div>
 """, unsafe_allow_html=True)
 
 c3.markdown(f"""
 <div class="small-metric">
-<b>Costo impresión</b><br>
-<span class="val">${costo_impresion:,.2f}</span>
+<b>Clicks máquina</b><br>
+<span class="val">{clicks_maquina:,.0f}</span>
 </div>
 """, unsafe_allow_html=True)
 
 c4.markdown(f"""
 <div class="small-metric">
-<b>Costo papel</b><br>
-<span class="val">${costo_papel:,.2f}</span>
+<b>Clicks facturable</b><br>
+<span class="val">{clicks_facturable:,.0f}</span>
 </div>
 """, unsafe_allow_html=True)
+
+c5.markdown(f"""... Costo impresión ...""", unsafe_allow_html=True)
 
 # Otra fila chica
 c5, c6, c7 = st.columns(3)
@@ -429,6 +441,9 @@ else:
             "allow_rotate": bool(allow_rotate),
             "piezas_por_lado": int(piezas_por_lado),
             "orientacion": orientacion,
+            "hojas_fisicas": int(hojas_fisicas),
+            "clicks_maquina": int(clicks_maquina),
+            "clicks_facturable": float(clicks_facturable),  
         }
 
         if tipo_producto == "Extendido":
@@ -448,16 +463,22 @@ else:
         breakdown_payload = {
             "impresion": {
                 "unidades_carta_lado": float(unidades_carta_lado),
-                "costo_unitario_carta_lado": costo_unitario_carta_lado,
-                "formula": "total = unidades_carta_lado * costo_unitario_carta_lado",
+                "costo_unitario_carta_lado": float(costo_unitario_carta_lado),
+                "formula_costo": "total = unidades_carta_lado * costo_unitario_carta_lado",
                 "total": float(costo_impresion),
+
+                # Métrica operativa (NO facturable)
+                "clicks_maquina": int(clicks_maquina),
+                "formula_clicks_maquina": "clicks_maquina = hojas_fisicas * lados (extendido) | hojas_fisicas * 2 (libro)"
             },
+
             "papel": {
                 "hojas_fisicas": int(hojas_fisicas),
-                "costo_hoja_con_merma": costo_hoja_con_merma,
+                "costo_hoja_con_merma": float(costo_hoja * (1 + merma_papel)),
                 "formula": "total = hojas_fisicas * costo_hoja_con_merma",
                 "total": float(costo_papel),
             },
+
             "adicionales": {
                 "total": float(total_adicionales),
                 "formula": "total = suma(importes)",
@@ -467,6 +488,7 @@ else:
                     if str(r.get("Concepto", "")).strip()
                 ]
             },
+
             "totales": {
                 "subtotal_antes_margen": float(subtotal_costos),
                 "margen": float(margen),
@@ -475,6 +497,7 @@ else:
                 "formula_precio": "precio_total = subtotal_antes_margen * (1 + margen)"
             }
         }
+
 
         row = {
             "quote_code": quote_code,
