@@ -208,44 +208,57 @@ if not restriccion_ok:
 # ---------------------------------
 # Inputs de tiraje y lógica de unidades / hojas
 # ---------------------------------
+# Defaults para evitar variables no definidas
+unidades_carta_lado = 0.0
+hojas_fisicas = 0
+paginas = None
+paginas_totales = 0
+
 if tipo_producto == "Extendido":
     col1, col2 = st.columns(2)
     with col1:
         piezas = st.number_input("Tiraje (piezas)", min_value=1, value=1000, step=1)
     with col2:
-        lados = st.radio("Impresión", [1, 2], format_func=lambda x: "Frente" if x == 1 else "Frente y vuelta", horizontal=True)
+        lados = st.radio(
+            "Impresión",
+            [1, 2],
+            format_func=lambda x: "Frente" if x == 1 else "Frente y vuelta",
+            horizontal=True
+        )
 
     # IMPRESIÓN (Carta-lado): piezas * factor_area * lados
-    unidades_carta_lado = piezas * factor_carta * lados
+    unidades_carta_lado = float(piezas) * float(factor_carta) * float(lados)
 
     # PAPEL: tabloides físicos (independiente de frente/FyV)
-    piezas_por_hoja = piezas_por_lado
-    hojas_fisicas = math.ceil(piezas / piezas_por_hoja)
+    piezas_por_hoja = int(piezas_por_lado)
+    hojas_fisicas = math.ceil(int(piezas) / max(piezas_por_hoja, 1))
 
     descripcion_producto = "Extendido"
     etiqueta_tiraje = "pzas"
-    paginas = None
 
 else:
     col1, col2 = st.columns(2)
     with col1:
         libros = st.number_input("Tiraje (libros)", min_value=1, value=4, step=1)
     with col2:
-        paginas = st.number_input("Páginas interiores por libro", min_value=1, value=456, step=1,
-                                  help="Solo interiores. 1 página = 1 lado impreso.")
+        paginas = st.number_input(
+            "Páginas interiores por libro",
+            min_value=1, value=456, step=1,
+            help="Solo interiores. 1 página = 1 lado impreso."
+        )
 
-    piezas = libros
+    piezas = int(libros)  # para precio_unitario
     descripcion_producto = "Libro / Folleto (interiores)"
     etiqueta_tiraje = "libros"
 
-    paginas_totales = libros * paginas
+    paginas_totales = int(libros) * int(paginas)
 
     # IMPRESIÓN (Carta-lado): páginas_totales * factor_area
-    unidades_carta_lado = paginas_totales * factor_carta
+    unidades_carta_lado = float(paginas_totales) * float(factor_carta)
 
     # PAPEL (FyV): páginas por hoja FyV = piezas_por_lado * 2
-    paginas_por_hoja_fyv = piezas_por_lado * 2
-    hojas_fisicas = math.ceil(paginas_totales / paginas_por_hoja_fyv)
+    paginas_por_hoja_fyv = int(piezas_por_lado) * 2
+    hojas_fisicas = math.ceil(int(paginas_totales) / max(paginas_por_hoja_fyv, 1))
 
 # ---------------------------------
 # Clicks: máquina vs facturable
@@ -352,7 +365,12 @@ hr()
 
 c1, c2, c3, c4, c5 = st.columns(5)
 
-c1.markdown(f"""... Unidades Carta-lado ...""", unsafe_allow_html=True)
+c1.markdown(f"""
+<div class="small-metric">
+<b>Unidades Carta-lado</b><br>
+<span class="val">{unidades_carta_lado:,.0f}</span>
+</div>
+""", unsafe_allow_html=True)
 
 c2.markdown(f"""
 <div class="small-metric">
@@ -375,7 +393,12 @@ c4.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-c5.markdown(f"""... Costo impresión ...""", unsafe_allow_html=True)
+c5.markdown(f"""
+<div class="small-metric">
+<b>Costo impresión</b><br>
+<span class="val">${costo_impresion:,.2f}</span>
+</div>
+""", unsafe_allow_html=True)
 
 hr()
 
