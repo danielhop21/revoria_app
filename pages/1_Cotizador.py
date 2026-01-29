@@ -286,8 +286,14 @@ costo_impresion = costo_mo_dep + costo_tinta + costo_click + costo_cobertura
 # ---------------------------------
 # Costo papel (siempre hoja de impresión)
 # ---------------------------------
-area_m2, peso_hoja_kg, costo_hoja = paper_cost_for_sheet(hoja_w, hoja_h, papel_gramaje, papel_costo_kg)
-costo_papel = hojas_fisicas * costo_hoja * (1 + merma_papel)
+area_m2, peso_hoja_kg, costo_hoja = paper_cost_for_sheet(
+    hoja_w, hoja_h, papel_gramaje, papel_costo_kg
+)
+
+# Merma aplicada en hojas enteras
+hojas_con_merma = math.ceil(hojas_fisicas * (1 + merma_papel))
+costo_papel = hojas_con_merma * costo_hoja
+
 
 # ---------------------------------
 # Costos adicionales (manuales) – UI estable
@@ -443,7 +449,8 @@ else:
             "orientacion": orientacion,
             "hojas_fisicas": int(hojas_fisicas),
             "clicks_maquina": int(clicks_maquina),
-            "clicks_facturable": float(clicks_facturable),  
+            "clicks_facturable": float(clicks_facturable),
+            "hojas_con_merma": int(hojas_con_merma),  
         }
 
         if tipo_producto == "Extendido":
@@ -474,8 +481,10 @@ else:
 
             "papel": {
                 "hojas_fisicas": int(hojas_fisicas),
-                "costo_hoja_con_merma": float(costo_hoja * (1 + merma_papel)),
-                "formula": "total = hojas_fisicas * costo_hoja_con_merma",
+                "hojas_con_merma": int(hojas_con_merma),
+                "costo_hoja": float(costo_hoja),
+                "merma": float(merma_papel),
+                "formula": "hojas_con_merma = ceil(hojas_fisicas * (1 + merma)); total = hojas_con_merma * costo_hoja",
                 "total": float(costo_papel),
             },
 
