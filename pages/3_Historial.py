@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from lib.supa import get_supabase
 from lib.auth import require_role
+from lib.exporter import build_quote_excel_bytes
 
 st.set_page_config(page_title="Historial", layout="wide")
 
@@ -31,6 +32,12 @@ def fetch_quotes(limit: int = 200, only_mine: bool = False):
 def fetch_quote_detail(quote_code: str):
     res = sb.table("quotes").select("*").eq("quote_code", quote_code).limit(1).execute()
     data = res.data or []
+    return data[0] if data else None
+
+def fetch_quote_by_code(quote_code: str) -> dict | None:
+    sb = get_supabase()
+    res = sb.table("quotes").select("*").eq("quote_code", quote_code).limit(1).execute()
+    data = getattr(res, "data", None) or []
     return data[0] if data else None
 
 def money(x):
@@ -143,6 +150,22 @@ if not row:
     st.stop()
 
 st.success(f"Cotización: {row['quote_code']}")
+
+# -----------------------------
+# Exportar (Excel)
+# -----------------------------
+role = st.session_state.auth.get("role", "")
+
+if role in {"admin", "cotizador"}:
+    excel_bytes = build_quote_excel_bytes(row, role=role)
+    st.download_button(
+        label="⬇️ Descargar Excel (desglose técnico)",
+        data=excel_bytes,
+        file_name=f"Cotizacion_{row['quote_code']}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+else:
+    st.info("Ventas puede descargar PDF (cliente). Excel solo admin/cotizador.")
 
 # Vista comercial (todos)
 cA, cB, cC, cD = st.columns(4)
