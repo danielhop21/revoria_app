@@ -3,6 +3,7 @@ import pandas as pd
 from lib.supa import get_supabase
 from lib.auth import require_role
 from lib.exporter import build_quote_excel_bytes
+from lib.pdf_exporter import build_quote_pdf_bytes
 
 st.set_page_config(page_title="Historial", layout="wide")
 
@@ -152,10 +153,21 @@ if not row:
 st.success(f"Cotización: {row['quote_code']}")
 
 # -----------------------------
-# Exportar (Excel)
+# Exportar (PDF / Excel)
 # -----------------------------
 role = st.session_state.auth.get("role", "")
 
+# PDF cliente: sales + admin/cotizador
+if role in {"admin", "cotizador", "sales"}:
+    pdf_bytes = build_quote_pdf_bytes(row)
+    st.download_button(
+        label="⬇️ Descargar PDF (cliente)",
+        data=pdf_bytes,
+        file_name=f"Cotizacion_{row['quote_code']}.pdf",
+        mime="application/pdf"
+    )
+
+# Excel técnico: solo admin/cotizador
 if role in {"admin", "cotizador"}:
     excel_bytes = build_quote_excel_bytes(row, role=role)
     st.download_button(
