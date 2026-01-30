@@ -51,12 +51,6 @@ DEFAULT_AREA_H = 32.4
 # -------------------------------------------------
 cfg = get_config()
 
-# DEBUG temporal (para Streamlit Cloud)
-st.write("DEBUG cfg type:", type(cfg))
-st.write("DEBUG cfg keys:", list(cfg.keys()) if isinstance(cfg, dict) else "NO ES DICT")
-st.write("DEBUG cfg['papel']:", cfg.get("papel") if isinstance(cfg, dict) else "NO ES DICT")
-st.stop()
-
 mo_dep = float(cfg["impresion"]["mo_dep"])
 tinta = float(cfg["impresion"]["tinta"])
 click = float(cfg["impresion"]["click"])
