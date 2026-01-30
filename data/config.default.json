@@ -1,5 +1,10 @@
 {
   "impresion": { "mo_dep": 0.06, "tinta": 0.39, "click": 0.35, "cobertura": 0.1 },
-  "papel": { "costo_kg": 21.0, "gramaje": 130.0, "merma": 0.0 },
+  "papel": {
+    "cuche_costo_kg": 21.0,
+    "bond_costo_kg": 21.0,
+    "especial_costo_kg": 21.0,
+    "merma": 0.0
+  },
   "margen": { "margen": 0.4 }
 }

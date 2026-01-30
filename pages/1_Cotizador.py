@@ -41,6 +41,7 @@ DEFAULT_HOJA_H = 33.0
 DEFAULT_AREA_W = 47.4
 DEFAULT_AREA_H = 32.4
 
+
 # ---------------------------------
 # Config (desde Configuración)
 # ---------------------------------
@@ -51,13 +52,16 @@ tinta = float(cfg["impresion"]["tinta"])
 click = float(cfg["impresion"]["click"])
 cobertura = float(cfg["impresion"]["cobertura"])
 
-papel_costo_kg = float(cfg["papel"]["costo_kg"])
-papel_gramaje = float(cfg["papel"]["gramaje"])
+# Papel: costos por tipo (CONFIG). Gramaje lo alimenta el usuario en cotización.
+papel_costos_kg = {
+    "Couché": float(cfg["papel"]["cuche_costo_kg"]),
+    "Bond": float(cfg["papel"]["bond_costo_kg"]),
+    "Especial": float(cfg["papel"]["especial_costo_kg"]),
+}
 merma_papel = float(cfg["papel"]["merma"])
 
 margen = float(cfg["margen"]["margen"])
 
-# (Opcional pero recomendado) Mostrar resumen arriba para transparencia
 
 with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
     st.write({
@@ -65,12 +69,12 @@ with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
         "Tinta": tinta,
         "Click": click,
         "Cobertura": cobertura,
-        "Papel $/kg": papel_costo_kg,
-        "Gramaje g/m²": papel_gramaje,
+        "Papel $/kg (Couché)": papel_costos_kg["Couché"],
+        "Papel $/kg (Bond)": papel_costos_kg["Bond"],
+        "Papel $/kg (Especial)": papel_costos_kg["Especial"],
         "Merma papel": merma_papel,
         "Margen": margen,
     })
-
 
 
 # ---------------------------------
@@ -130,6 +134,7 @@ def make_quote_code() -> str:
     suffix = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
     return f"Q-{now:%Y%m%d-%H%M%S}-{suffix}"
 
+
 # ---------------------------------
 # Inputs principales
 # ---------------------------------
@@ -146,6 +151,7 @@ factor_carta = factor_vs_carta(ancho_final, alto_final)
 st.caption(f"Factor vs Carta (por área): **{factor_carta:.4f}** (Carta=1.0000)")
 
 st.divider()
+
 
 # ---------------------------------
 # Parámetros de hoja/huella y cubicación (config por trabajo)
@@ -179,6 +185,7 @@ piezas_por_lado, orientacion, w_eff, h_eff = calc_piezas_por_lado(
 
 st.info(f"Cubicación estimada: **{piezas_por_lado} por lado** (orientación: **{orientacion}**)")
 
+
 # ---------------------------------
 # Restricciones por tipo de producto
 # ---------------------------------
@@ -204,6 +211,23 @@ if tipo_producto == "Libro / Folleto (interiores)":
 if not restriccion_ok:
     st.error(motivo)
     st.stop()
+
+
+# ---------------------------------
+# Papel (inputs del usuario)
+# ---------------------------------
+st.subheader("Papel")
+colP1, colP2 = st.columns(2)
+with colP1:
+    tipo_papel = st.selectbox("Tipo de papel", ["Couché", "Bond", "Especial"])
+with colP2:
+    papel_gramaje = st.number_input("Gramaje (g/m²)", min_value=40.0, value=150.0, step=5.0)
+
+papel_costo_kg = float(papel_costos_kg[tipo_papel])
+st.caption(f"Costo aplicado: **${papel_costo_kg:,.2f}/kg** · Merma: **{merma_papel*100:.1f}%**")
+
+st.divider()
+
 
 # ---------------------------------
 # Inputs de tiraje y lógica de unidades / hojas
@@ -260,6 +284,7 @@ else:
     paginas_por_hoja_fyv = int(piezas_por_lado) * 2
     hojas_fisicas = math.ceil(int(paginas_totales) / max(paginas_por_hoja_fyv, 1))
 
+
 # ---------------------------------
 # Clicks: máquina vs facturable
 # ---------------------------------
@@ -269,7 +294,8 @@ if tipo_producto == "Extendido":
 else:
     # Libro / interiores: siempre FyV
     clicks_maquina = int(hojas_fisicas) * 2              # tabloide-lado
-    clicks_facturable = float(unidades_carta_lado)       # carta-lado (por tu definición 1 pág = 1 lado)
+    clicks_facturable = float(unidades_carta_lado)       # carta-lado
+
 
 # ---------------------------------
 # Costos impresión
@@ -279,6 +305,7 @@ costo_tinta = unidades_carta_lado * tinta
 costo_click = unidades_carta_lado * click
 costo_cobertura = unidades_carta_lado * cobertura
 costo_impresion = costo_mo_dep + costo_tinta + costo_click + costo_cobertura
+
 
 # ---------------------------------
 # Costo papel (siempre hoja de impresión)
@@ -341,6 +368,7 @@ for i, row in enumerate(st.session_state.costos_adicionales):
     if concepto:
         total_adicionales += importe
 
+
 # ---------------------------------
 # Subtotal y precio
 # ---------------------------------
@@ -348,8 +376,9 @@ subtotal_costos = costo_impresion + costo_papel + total_adicionales
 precio_total = subtotal_costos * (1 + margen)
 precio_unitario = precio_total / piezas
 
+
 # ---------------------------------
-# Resultados (section))
+# Resultados (section)
 # ---------------------------------
 section_open()
 st.subheader("Resultados")
@@ -432,7 +461,6 @@ st.divider()
 section_open()
 st.subheader("Guardar cotización")
 
-
 if "auth" not in st.session_state or not st.session_state.auth.get("is_logged", False):
     st.warning("Inicia sesión desde Home para poder guardar cotizaciones.")
 else:
@@ -461,10 +489,16 @@ else:
             "allow_rotate": bool(allow_rotate),
             "piezas_por_lado": int(piezas_por_lado),
             "orientacion": orientacion,
+
+            # Papel (inputs del usuario)
+            "tipo_papel": tipo_papel,
+            "papel_gramaje_gm2": float(papel_gramaje),
+            "papel_costo_kg_aplicado": float(papel_costo_kg),
+
             "hojas_fisicas": int(hojas_fisicas),
             "clicks_maquina": int(clicks_maquina),
             "clicks_facturable": float(clicks_facturable),
-            "hojas_con_merma": int(hojas_con_merma),  
+            "hojas_con_merma": int(hojas_con_merma),
         }
 
         if tipo_producto == "Extendido":
@@ -479,7 +513,6 @@ else:
 
         # Breakdown con “fórmulas de 2 variables”
         costo_unitario_carta_lado = float(mo_dep + tinta + click + cobertura)
-        costo_hoja_con_merma = float(costo_hoja * (1 + merma_papel))
 
         breakdown_payload = {
             "impresion": {
@@ -494,6 +527,10 @@ else:
             },
 
             "papel": {
+                "tipo_papel": tipo_papel,
+                "gramaje_gm2": float(papel_gramaje),
+                "costo_kg": float(papel_costo_kg),
+
                 "hojas_fisicas": int(hojas_fisicas),
                 "hojas_con_merma": int(hojas_con_merma),
                 "costo_hoja": float(costo_hoja),
@@ -521,7 +558,6 @@ else:
             }
         }
 
-
         row = {
             "quote_code": quote_code,
             "created_by": created_by,
@@ -542,7 +578,9 @@ else:
         except Exception as e:
             st.error("No se pudo guardar en Supabase (revisa secrets / conexión).")
             st.exception(e)
+
 section_close()
+
 
 # ---------------------------------
 # Texto copiable
@@ -563,7 +601,7 @@ texto += (
     f"- Cubicación: {piezas_por_lado} por lado ({orientacion}) | Huella {area_w:.1f} x {area_h:.1f} cm\n"
     f"- Hoja impresión: {hoja_w:.1f} x {hoja_h:.1f} cm\n"
     f"- Costo de impresión: ${costo_impresion:,.2f}\n"
-    f"- Papel: {papel_gramaje:.0f} g/m² @ ${papel_costo_kg:,.2f}/kg (merma {merma_papel*100:.1f}%)\n"
+    f"- Papel: {tipo_papel} · {papel_gramaje:.0f} g/m² @ ${papel_costo_kg:,.2f}/kg (merma {merma_papel*100:.1f}%)\n"
     f"- Costo de papel: ${costo_papel:,.2f}\n"
 )
 

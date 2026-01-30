@@ -21,7 +21,6 @@ render_header(
 
 cfg = get_config()
 
-
 st.subheader("Impresión (por Carta – 1 lado)")
 cfg["impresion"]["mo_dep"] = st.number_input("MO + Depreciación", min_value=0.0, value=float(cfg["impresion"]["mo_dep"]), step=0.01, format="%.4f")
 cfg["impresion"]["tinta"] = st.number_input("Tinta CMYK", min_value=0.0, value=float(cfg["impresion"]["tinta"]), step=0.01, format="%.4f")
@@ -31,11 +30,59 @@ cfg["impresion"]["cobertura"] = st.number_input("Cobertura", min_value=0.0, valu
 st.divider()
 
 st.subheader("Papel")
-cfg["papel"]["costo_kg"] = st.number_input("Costo papel ($/kg)", min_value=0.0, value=float(cfg["papel"]["costo_kg"]), step=0.5, format="%.2f")
-cfg["papel"]["gramaje"] = st.number_input("Gramaje (g/m²)", min_value=0.0, value=float(cfg["papel"]["gramaje"]), step=5.0, format="%.1f")
 
-merma_pct = st.number_input("Merma papel (%)", min_value=0.0, value=float(cfg["papel"]["merma"] * 100.0), step=0.5, format="%.1f")
+# Asegurar claves (backward compatible + migración)
+cfg.setdefault("papel", {})
+
+# Si antes existía un solo costo_kg, úsalo como fallback inicial (no obligatorio)
+legacy_costo = float(cfg["papel"].get("costo_kg", 0.0) or 0.0)
+
+cfg["papel"].setdefault("cuche_costo_kg", legacy_costo)
+cfg["papel"].setdefault("bond_costo_kg", legacy_costo)
+cfg["papel"].setdefault("especial_costo_kg", legacy_costo)
+cfg["papel"].setdefault("merma", 0.0)
+
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    cfg["papel"]["cuche_costo_kg"] = st.number_input(
+        "Couché ($/kg)",
+        min_value=0.0,
+        value=float(cfg["papel"]["cuche_costo_kg"]),
+        step=0.5,
+        format="%.2f"
+    )
+
+with col2:
+    cfg["papel"]["bond_costo_kg"] = st.number_input(
+        "Bond ($/kg)",
+        min_value=0.0,
+        value=float(cfg["papel"]["bond_costo_kg"]),
+        step=0.5,
+        format="%.2f"
+    )
+
+with col3:
+    cfg["papel"]["especial_costo_kg"] = st.number_input(
+        "Especial ($/kg)",
+        min_value=0.0,
+        value=float(cfg["papel"]["especial_costo_kg"]),
+        step=0.5,
+        format="%.2f"
+    )
+
+st.divider()
+
+merma_pct = st.number_input(
+    "Merma papel (%)",
+    min_value=0.0,
+    value=float(cfg["papel"]["merma"] * 100.0),
+    step=0.5,
+    format="%.1f"
+)
 cfg["papel"]["merma"] = merma_pct / 100.0
+
 
 st.divider()
 

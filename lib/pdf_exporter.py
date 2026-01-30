@@ -30,6 +30,10 @@ def build_quote_pdf_bytes(row: dict) -> bytes:
     alto = inputs.get("alto_final_cm", "")
     lados = inputs.get("lados", 2 if "Libro" in str(tipo) else 1)
 
+    # Papel (nuevo)
+    tipo_papel = (inputs.get("tipo_papel") or "").strip()
+    gramaje = inputs.get("papel_gramaje_gm2", "")
+
     # Tirajes
     tiraje_piezas = inputs.get("tiraje_piezas")
     tiraje_libros = inputs.get("tiraje_libros")
@@ -96,6 +100,16 @@ def build_quote_pdf_bytes(row: dict) -> bytes:
         c.drawString(left, y, f"Páginas interiores por libro: {paginas_por_libro}")
         y -= 0.45 * cm
         c.drawString(left, y, "Impresión: Frente y vuelta")
+        y -= 0.45 * cm
+
+    # Papel (cliente)
+    if tipo_papel or gramaje != "":
+        papel_txt = "Papel: "
+        if tipo_papel:
+            papel_txt += f"{tipo_papel}"
+        if gramaje != "":
+            papel_txt += f" · {gramaje} g/m²"
+        c.drawString(left, y, papel_txt)
         y -= 0.45 * cm
 
     y -= 0.2 * cm

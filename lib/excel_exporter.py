@@ -17,6 +17,11 @@ def build_quote_excel_bytes(row: dict, role: str) -> bytes:
     alto = inputs.get("alto_final_cm", "")
     lados = inputs.get("lados", 2 if "Libro" in str(tipo_producto) else 1)
 
+    # Papel (nuevo esquema)
+    tipo_papel = inputs.get("tipo_papel", "")
+    gramaje = inputs.get("papel_gramaje_gm2", "")
+    costo_kg_aplicado = inputs.get("papel_costo_kg_aplicado", "")
+
     tot = breakdown.get("totales", {})
     precio_total = tot.get("precio_total", row.get("price_total"))
     precio_unit = tot.get("precio_unitario", row.get("price_unit"))
@@ -51,6 +56,12 @@ def build_quote_excel_bytes(row: dict, role: str) -> bytes:
             ("Impresión", "Frente y vuelta"),
         ]
 
+    # Papel (cliente)
+    rows_cliente += [
+        ("Tipo de papel", tipo_papel),
+        ("Gramaje (g/m²)", gramaje),
+    ]
+
     rows_cliente += [
         ("Precio unitario", precio_unit),
         ("Precio total", precio_total),
@@ -64,9 +75,9 @@ def build_quote_excel_bytes(row: dict, role: str) -> bytes:
     # ----------------------------
     can_see_detail = role in {"admin", "cotizador"}
 
-    papel = breakdown.get("papel", {})
-    imp = breakdown.get("impresion", {})
-    adicionales = breakdown.get("adicionales", {})
+    papel = breakdown.get("papel", {}) or {}
+    imp = breakdown.get("impresion", {}) or {}
+    adicionales = breakdown.get("adicionales", {}) or {}
 
     hojas_fisicas = inputs.get("hojas_fisicas", papel.get("hojas_fisicas"))
     clicks_maquina = inputs.get("clicks_maquina")
@@ -77,6 +88,20 @@ def build_quote_excel_bytes(row: dict, role: str) -> bytes:
             clicks_maquina = int(hojas_fisicas) * int(lados)
         else:
             clicks_maquina = int(hojas_fisicas) * 2
+
+    # Papel: valores técnicos
+    merma = papel.get("merma", None)
+    costo_hoja = papel.get("costo_hoja", None)
+    hojas_con_merma = papel.get("hojas_con_merma", inputs.get("hojas_con_merma", None))
+
+    # Calcular costo hoja con merma si no existe
+    costo_hoja_con_merma = papel.get("costo_hoja_con_merma", None)
+    if costo_hoja_con_merma is None:
+        try:
+            if costo_hoja is not None and merma is not None:
+                costo_hoja_con_merma = float(costo_hoja) * (1.0 + float(merma))
+        except Exception:
+            costo_hoja_con_merma = None
 
     rows_detalle = []
 
@@ -98,9 +123,15 @@ def build_quote_excel_bytes(row: dict, role: str) -> bytes:
     add("Impresión", "Costo unitario carta-lado", imp.get("costo_unitario_carta_lado"))
     add("Impresión", "Total impresión", imp.get("total"))
 
-    # Papel
+    # Papel (agregado completo con nuevo esquema)
+    add("Papel", "Tipo de papel", papel.get("tipo_papel", tipo_papel))
+    add("Papel", "Gramaje (g/m²)", papel.get("gramaje_gm2", gramaje))
+    add("Papel", "Costo aplicado ($/kg)", papel.get("costo_kg", costo_kg_aplicado))
     add("Papel", "Hojas físicas", papel.get("hojas_fisicas", hojas_fisicas))
-    add("Papel", "Costo hoja (con merma)", papel.get("costo_hoja_con_merma"))
+    add("Papel", "Hojas con merma", hojas_con_merma)
+    add("Papel", "Merma", merma)
+    add("Papel", "Costo hoja (sin merma)", costo_hoja)
+    add("Papel", "Costo hoja (con merma)", costo_hoja_con_merma)
     add("Papel", "Total papel", papel.get("total"))
 
     # Adicionales
@@ -128,4 +159,3 @@ def build_quote_excel_bytes(row: dict, role: str) -> bytes:
             df_adic.to_excel(writer, index=False, sheet_name="Adicionales")
 
     return output.getvalue()
-

@@ -3,7 +3,7 @@ import pandas as pd
 
 from lib.supa import get_supabase
 from lib.auth import require_role
-from lib.exporter import build_quote_excel_bytes
+from lib.excel_exporter import build_quote_excel_bytes
 from lib.pdf_exporter import build_quote_pdf_bytes
 from lib.ui import inject_global_css, render_header, card_open, card_close, hr
 
