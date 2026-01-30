@@ -7,6 +7,9 @@ import string
 
 import streamlit as st
 
+# -------------------------------------------------
+# Root / imports internos
+# -------------------------------------------------
 ROOT = Path(__file__).resolve().parents[1]  # carpeta revoria_app
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -14,12 +17,15 @@ if str(ROOT) not in sys.path:
 from lib.auth import require_role
 from lib.supa import get_supabase
 from lib.config_store import get_config
-from lib.ui import inject_global_css, render_header, card_open, card_close, hr, section_open, section_close
+from lib.ui import (
+    inject_global_css, render_header,
+    card_open, card_close, hr,
+    section_open, section_close
+)
 
-
-# ---------------------------------
+# -------------------------------------------------
 # Config (SIEMPRE primero)
-# ---------------------------------
+# -------------------------------------------------
 st.set_page_config(page_title="Cotizador Revoria — Offset Santiago", layout="centered")
 inject_global_css()
 require_role({"admin", "sales"})
@@ -28,7 +34,6 @@ render_header(
     "Cotizador Revoria",
     "Área vs Carta · Tabloide 48×33 · Huella 47.4×32.4"
 )
-
 
 # Base carta (cm) para costeo de impresión por "Carta-lado"
 CARTA_W = 21.5
@@ -41,11 +46,16 @@ DEFAULT_HOJA_H = 33.0
 DEFAULT_AREA_W = 47.4
 DEFAULT_AREA_H = 32.4
 
-
-# ---------------------------------
+# -------------------------------------------------
 # Config (desde Configuración)
-# ---------------------------------
+# -------------------------------------------------
 cfg = get_config()
+
+# DEBUG temporal (para Streamlit Cloud)
+st.write("DEBUG cfg type:", type(cfg))
+st.write("DEBUG cfg keys:", list(cfg.keys()) if isinstance(cfg, dict) else "NO ES DICT")
+st.write("DEBUG cfg['papel']:", cfg.get("papel") if isinstance(cfg, dict) else "NO ES DICT")
+st.stop()
 
 mo_dep = float(cfg["impresion"]["mo_dep"])
 tinta = float(cfg["impresion"]["tinta"])
