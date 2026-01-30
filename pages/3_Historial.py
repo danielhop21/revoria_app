@@ -5,7 +5,7 @@ from lib.supa import get_supabase
 from lib.auth import require_role
 from lib.excel_exporter import build_quote_excel_bytes
 from lib.pdf_exporter import build_quote_pdf_bytes
-from lib.ui import inject_global_css, render_header, card_open, card_close, hr
+from lib.ui import inject_global_css, render_header, card_open, card_close, hr, section_open, section_close
 
 st.set_page_config(page_title="Historial — Offset Santiago", layout="wide")
 inject_global_css()
@@ -157,31 +157,18 @@ if not row:
 st.success(f"Cotización: {row['quote_code']}")
 
 # -----------------------------
-# Exportar (PDF / Excel)
+# Preparar exports (una sola vez)
 # -----------------------------
 role = st.session_state.auth.get("role", "")
 
-# PDF cliente: sales + admin/cotizador
+pdf_bytes = None
+excel_bytes = None
+
 if role in {"admin", "cotizador", "sales"}:
     pdf_bytes = build_quote_pdf_bytes(row)
-    st.download_button(
-        label="⬇️ Descargar PDF (cliente)",
-        data=pdf_bytes,
-        file_name=f"Cotizacion_{row['quote_code']}.pdf",
-        mime="application/pdf"
-    )
 
-# Excel técnico: solo admin/cotizador
 if role in {"admin", "cotizador"}:
     excel_bytes = build_quote_excel_bytes(row, role=role)
-    st.download_button(
-        label="⬇️ Descargar Excel (desglose técnico)",
-        data=excel_bytes,
-        file_name=f"Cotizacion_{row['quote_code']}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-else:
-    st.info("Ventas puede descargar PDF (cliente). Excel solo admin/cotizador.")
 
 # -----------------------------
 # Job Card (Detalle)
@@ -224,8 +211,8 @@ else:
         tiraje_txt += f" · {pags} pág"
     imp_txt = "Frente y vuelta"
 
-# Card
-card_open()
+# Section
+section_open()
 
 colL, colR = st.columns([3, 2], vertical_alignment="center")
 with colL:
@@ -259,9 +246,7 @@ st.markdown('<div class="actionbar">', unsafe_allow_html=True)
 a1, a2 = st.columns([1.2, 1.0], vertical_alignment="center")
 
 with a1:
-    # PDF cliente: sales + admin/cotizador
-    if role in {"admin", "cotizador", "sales"}:
-        pdf_bytes = build_quote_pdf_bytes(row)
+    if pdf_bytes is not None:
         st.download_button(
             label="📄 PDF cliente",
             data=pdf_bytes,
@@ -271,9 +256,7 @@ with a1:
         )
 
 with a2:
-    # Excel técnico: solo admin/cotizador
-    if role in {"admin", "cotizador"}:
-        excel_bytes = build_quote_excel_bytes(row, role=role)
+    if excel_bytes is not None:
         st.download_button(
             label="📊 Excel técnico",
             data=excel_bytes,
@@ -283,6 +266,7 @@ with a2:
         )
     else:
         st.caption("Excel: solo admin/cotizador")
+
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -336,7 +320,7 @@ with tab2:
             "Precio total": tot.get("precio_total"),
         })
 
-card_close()
+section_close()
 
 
 # -----------------------------
