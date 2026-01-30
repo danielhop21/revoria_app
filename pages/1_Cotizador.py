@@ -46,10 +46,22 @@ DEFAULT_HOJA_H = 33.0
 DEFAULT_AREA_W = 47.4
 DEFAULT_AREA_H = 32.4
 
-# -------------------------------------------------
+# ---------------------------------
 # Config (desde Configuración)
-# -------------------------------------------------
+# ---------------------------------
 cfg = get_config()
+
+# Validación mínima de config (fail-fast)
+papel_cfg = cfg.get("papel", {})
+for k in ("cuche_costo_kg", "bond_costo_kg", "especial_costo_kg", "merma"):
+    if k not in papel_cfg:
+        st.error(f"Config incompleta: falta papel.{k}. Revisa Configuración/Secrets.")
+        st.stop()
+
+mo_dep = float(cfg["impresion"]["mo_dep"])
+tinta = float(cfg["impresion"]["tinta"])
+click = float(cfg["impresion"]["click"])
+cobertura = float(cfg["impresion"]["cobertura"])
 
 mo_dep = float(cfg["impresion"]["mo_dep"])
 tinta = float(cfg["impresion"]["tinta"])
