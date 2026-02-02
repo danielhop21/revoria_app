@@ -1,49 +1,85 @@
+import sys
+from pathlib import Path
+from typing import Any, Dict, Optional
+
 import streamlit as st
 import pandas as pd
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from lib.auth_users_yaml import require_login
+from lib.permissions import permissions_for, normalize_role
 from lib.supa import get_supabase
-from lib.auth import require_role
 from lib.excel_exporter import build_quote_excel_bytes
 from lib.pdf_exporter import build_quote_pdf_bytes
-from lib.ui import inject_global_css, render_header, card_open, card_close, hr, section_open, section_close
+from lib.ui import inject_global_css, render_header, hr, section_open, section_close
 
 st.set_page_config(page_title="Historial — Offset Santiago", layout="wide")
 inject_global_css()
-require_role({"admin", "cotizador", "sales"})
+
+user = require_login()
+perms = permissions_for(user.role)
 
 render_header(
     "Historial de cotizaciones",
-    "Busca, abre detalle y exporta PDF/Excel"
+    "Busca, abre detalle y exporta PDF/Excel (según permisos)"
 )
 
 sb = get_supabase()
-role = st.session_state.auth.get("role")
-user = st.session_state.auth.get("user")
+role = normalize_role(user.role)   # admin/cotizador/vendedor
+username = user.username
+
 
 # -----------------------------
-# Helpers
+# Helpers (seguridad)
 # -----------------------------
-def fetch_quotes(limit: int = 200, only_mine: bool = False):
-    q = sb.table("quotes").select(
-        "quote_number, quote_code, created_at, created_by, created_role, customer_name, price_unit, price_total, currency"
-    ).order("quote_number", desc=True).limit(limit)
+SAFE_INPUT_KEYS_FOR_VENDEDOR = {
+    "tipo_producto",
+    "tiraje_piezas",
+    "tiraje_libros",
+    "paginas_por_libro",
+    "paginas_totales",
+    "lados",
+    "ancho_final_cm",
+    "alto_final_cm",
+    "hoja_w_cm",
+    "hoja_h_cm",
+    "area_w_cm",
+    "area_h_cm",
+    "bleed_cm",
+    "gutter_cm",
+    "allow_rotate",
+    "piezas_por_lado",
+    "orientacion",
+    "tipo_papel",
+    "papel_gramaje_gm2",
+    "n_tintas",
+    "clicks_maquina",
+    "clicks_facturable",
+    "hojas_fisicas",
+    "hojas_con_merma",
+    "factor_carta",
+}
 
-    if only_mine:
-        q = q.eq("created_by", user)
+def sanitize_row_for_vendedor(row: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Evita fugas: quita breakdown/config_snapshot y limpia inputs (costos aplicados, etc.).
+    Mantiene price_total/price_unit y campos básicos para PDF cliente.
+    """
+    out = dict(row or {})
+    out.pop("config_snapshot", None)
 
-    res = q.execute()
-    return res.data or []
+    # breakdown fuera
+    out["breakdown"] = {}
 
-def fetch_quote_detail(quote_code: str):
-    res = sb.table("quotes").select("*").eq("quote_code", quote_code).limit(1).execute()
-    data = res.data or []
-    return data[0] if data else None
+    # inputs limitados
+    inputs = out.get("inputs") or {}
+    safe_inputs = {k: inputs.get(k) for k in SAFE_INPUT_KEYS_FOR_VENDEDOR if k in inputs}
+    out["inputs"] = safe_inputs
 
-def fetch_quote_by_code(quote_code: str) -> dict | None:
-    sb = get_supabase()
-    res = sb.table("quotes").select("*").eq("quote_code", quote_code).limit(1).execute()
-    data = getattr(res, "data", None) or []
-    return data[0] if data else None
+    return out
 
 def money(x):
     try:
@@ -51,17 +87,52 @@ def money(x):
     except Exception:
         return str(x)
 
+
+# -----------------------------
+# Fetchers
+# -----------------------------
+def fetch_quotes(limit: int = 200, only_mine: bool = False):
+    # NOTA: tu tabla parece traer quote_number; si no existe, igual funciona sin ese campo.
+    cols = "quote_code, created_at, created_by, created_role, customer_name, price_unit, price_total, currency, quote_number"
+    q = sb.table("quotes").select(cols)
+
+    # Orden: si existe quote_number úsalo; si no, usa created_at
+    try:
+        q = q.order("quote_number", desc=True)
+    except Exception:
+        try:
+            q = q.order("created_at", desc=True)
+        except Exception:
+            pass
+
+    q = q.limit(limit)
+
+    if only_mine:
+        q = q.eq("created_by", username)
+
+    res = q.execute()
+    return res.data or []
+
+def fetch_quote_detail(quote_code: str) -> Optional[Dict[str, Any]]:
+    res = sb.table("quotes").select("*").eq("quote_code", quote_code).limit(1).execute()
+    data = getattr(res, "data", None) or []
+    return data[0] if data else None
+
+
 # -----------------------------
 # Filtros
 # -----------------------------
 st.subheader("Filtros")
 
 c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+
 with c1:
     limit = st.number_input("Máximo a mostrar", min_value=20, max_value=1000, value=200, step=20)
+
 with c2:
-    only_mine_default = True if role == "sales" else False
+    only_mine_default = True if role == "vendedor" else False
     only_mine = st.checkbox("Solo mis cotizaciones", value=only_mine_default)
+
 with c3:
     search_number = st.text_input("Buscar por No. de cotización", placeholder="00000")
 
@@ -78,43 +149,46 @@ if df.empty:
 # -----------------------------
 # Dropdown de usuarios (desde los datos)
 # -----------------------------
-users = sorted([u for u in df["created_by"].dropna().unique().tolist() if str(u).strip()])
+users = sorted([u for u in df.get("created_by", pd.Series([])).dropna().unique().tolist() if str(u).strip()])
 user_options = ["(Todos)"] + users
 
-search_user = st.selectbox(
-    "Filtrar por usuario",
-    options=user_options,
-    index=0,
-    key="user_filter"
-)
+with c4:
+    search_user = st.selectbox("Filtrar por usuario", options=user_options, index=0, key="user_filter")
 
 # -----------------------------
 # Filtros client-side
 # -----------------------------
-# 1) Buscar por No. de cotización (en vez de ID)
-# Asegúrate de que arriba en Filtros tienes: search_number = st.text_input(...)
 if search_number.strip():
     try:
         n = int(search_number.strip())
-        df = df[df["quote_number"] == n]
+        if "quote_number" in df.columns:
+            df = df[df["quote_number"] == n]
+        else:
+            st.warning("Esta base no tiene quote_number; filtra por ID (quote_code).")
     except ValueError:
         st.warning("El No. de cotización debe ser un número (ej. 154).")
 
-# 2) Filtrar por usuario (dropdown)
-if search_user != "(Todos)":
+if search_user != "(Todos)" and "created_by" in df.columns:
     df = df[df["created_by"] == search_user]
 
 # -----------------------------
-# Formato simple para mostrar
+# Formato para mostrar
 # -----------------------------
 df_show = df.copy()
-df_show["created_at"] = pd.to_datetime(df_show["created_at"]).dt.strftime("%Y-%m-%d %H:%M")
-df_show["price_unit"] = df_show["price_unit"].apply(money)
-df_show["price_total"] = df_show["price_total"].apply(money)
+
+if "created_at" in df_show.columns:
+    df_show["created_at"] = pd.to_datetime(df_show["created_at"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+
+if "price_unit" in df_show.columns:
+    df_show["price_unit"] = df_show["price_unit"].apply(money)
+
+if "price_total" in df_show.columns:
+    df_show["price_total"] = df_show["price_total"].apply(money)
 
 st.subheader("Cotizaciones")
-st.caption("Tip: busca por No. (ej. 154) o filtra por usuario.")
+st.caption("Tip: busca por No. (si existe) o filtra por usuario.")
 
+# Column config robusta (si faltan columnas, Streamlit ignora)
 st.dataframe(
     df_show,
     use_container_width=True,
@@ -138,44 +212,44 @@ st.dataframe(
 st.divider()
 st.subheader("Abrir cotización")
 
-# selector rápido con los primeros IDs en la tabla actual
-ids = df["quote_code"].astype(str).tolist()
-default_id = ids[0] if ids else ""
-pick = st.selectbox("Selecciona una cotización", options=ids, index=0)
+ids = df["quote_code"].astype(str).tolist() if "quote_code" in df.columns else []
+if not ids:
+    st.info("No hay IDs disponibles.")
+    st.stop()
 
+pick = st.selectbox("Selecciona una cotización", options=ids, index=0)
 open_btn = st.button("📄 Abrir detalle")
 
 if not open_btn:
     st.stop()
 
 row = fetch_quote_detail(pick)
-
 if not row:
     st.error("No se encontró esa cotización en la base.")
     st.stop()
 
-st.success(f"Cotización: {row['quote_code']}")
+st.success(f"Cotización: {row.get('quote_code')}")
 
 # -----------------------------
-# Preparar exports (una sola vez)
+# Preparar exports (según permisos)
 # -----------------------------
-role = st.session_state.auth.get("role", "")
+row_for_pdf = row
+if not perms.can_view_costs:
+    # vendedor: pasamos payload sanitizado al exporter para evitar fugas involuntarias
+    row_for_pdf = sanitize_row_for_vendedor(row)
 
-pdf_bytes = None
+pdf_bytes = build_quote_pdf_bytes(row_for_pdf)  # PDF cliente: permitido para todos
+
 excel_bytes = None
-
-if role in {"admin", "cotizador", "sales"}:
-    pdf_bytes = build_quote_pdf_bytes(row)
-
-if role in {"admin", "cotizador"}:
-    excel_bytes = build_quote_excel_bytes(row, role=role)
+if perms.can_export_tech:
+    excel_bytes = build_quote_excel_bytes(row, role=role)  # técnico: solo admin/cotizador
 
 # -----------------------------
 # Job Card (Detalle)
 # -----------------------------
 inputs = row.get("inputs") or {}
 breakdown = row.get("breakdown") or {}
-tot = breakdown.get("totales") or {}
+tot = (breakdown.get("totales") or {}) if isinstance(breakdown, dict) else {}
 
 tipo = inputs.get("tipo_producto", "")
 ancho = inputs.get("ancho_final_cm")
@@ -184,12 +258,11 @@ lados = inputs.get("lados", 2 if "Libro" in str(tipo) else 1)
 
 piezas_por_lado = inputs.get("piezas_por_lado")
 orient = inputs.get("orientacion")
-hojas_fisicas = inputs.get("hojas_fisicas") or (breakdown.get("papel", {}) or {}).get("hojas_fisicas")
+hojas_fisicas = inputs.get("hojas_fisicas") or ((breakdown.get("papel", {}) or {}).get("hojas_fisicas") if isinstance(breakdown, dict) else None)
 
 price_unit = tot.get("precio_unitario", row.get("price_unit"))
 price_total = tot.get("precio_total", row.get("price_total"))
 
-role = st.session_state.auth.get("role", "")
 created_by = str(row.get("created_by") or "")
 created_role = str(row.get("created_role") or "")
 created_at = str(row.get("created_at") or "")
@@ -200,7 +273,6 @@ def fmt_cm(x):
     except Exception:
         return ""
 
-# Tiraje / impresión legible
 if tipo == "Extendido":
     tiraje_txt = f"{inputs.get('tiraje_piezas', '')} pzas"
     imp_txt = "Frente" if int(lados) == 1 else "Frente y vuelta"
@@ -211,14 +283,13 @@ else:
         tiraje_txt += f" · {pags} pág"
     imp_txt = "Frente y vuelta"
 
-# Section
 section_open()
 
 colL, colR = st.columns([3, 2], vertical_alignment="center")
 with colL:
     st.markdown(
         f"""
-        <div class="h1">Cotización {row['quote_code']}</div>
+        <div class="h1">Cotización {row.get('quote_code')}</div>
         <div class="sub">{tipo} · {fmt_cm(ancho)} × {fmt_cm(alto)} cm · {tiraje_txt}</div>
         <div style="margin-top:10px;">
           <span class="pill">Impresión: {imp_txt}</span>
@@ -241,38 +312,31 @@ with colR:
 
 hr()
 
-# Action bar (PDF primero = primario)
-st.markdown('<div class="actionbar">', unsafe_allow_html=True)
 a1, a2 = st.columns([1.2, 1.0], vertical_alignment="center")
 
 with a1:
-    if pdf_bytes is not None:
-        st.download_button(
-            label="📄 PDF cliente",
-            data=pdf_bytes,
-            file_name=f"Cotizacion_{row['quote_code']}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+    st.download_button(
+        label="📄 PDF cliente",
+        data=pdf_bytes,
+        file_name=f"Cotizacion_{row.get('quote_code')}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
 
 with a2:
     if excel_bytes is not None:
         st.download_button(
             label="📊 Excel técnico",
             data=excel_bytes,
-            file_name=f"Cotizacion_{row['quote_code']}.xlsx",
+            file_name=f"Cotizacion_{row.get('quote_code')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
     else:
         st.caption("Excel: solo admin/cotizador")
 
-
-st.markdown('</div>', unsafe_allow_html=True)
-
 hr()
 
-# Tabs: Comercial vs Técnico
 tab1, tab2 = st.tabs(["🧾 Comercial", "🛠️ Técnico"])
 
 with tab1:
@@ -290,12 +354,12 @@ with tab1:
         st.write(f"**Notas:** {row.get('notes')}")
 
 with tab2:
-    if role not in {"admin", "cotizador"}:
+    if not perms.can_view_costs:
         st.info("Vista técnica disponible solo para admin/cotizador.")
     else:
-        papel = breakdown.get("papel", {}) or {}
-        imp = breakdown.get("impresion", {}) or {}
-        adic = breakdown.get("adicionales", {}) or {}
+        papel = (breakdown.get("papel", {}) or {}) if isinstance(breakdown, dict) else {}
+        imp = (breakdown.get("impresion", {}) or {}) if isinstance(breakdown, dict) else {}
+        adic = (breakdown.get("adicionales", {}) or {}) if isinstance(breakdown, dict) else {}
 
         st.write("### Operación")
         st.write({
@@ -322,20 +386,16 @@ with tab2:
 
 section_close()
 
-
 # -----------------------------
-# Permisos de detalle
+# Detalle técnico (JSON) — solo admin/cotizador
 # -----------------------------
-if role == "sales":
-    st.info("Vista de ventas: solo totales. (Admin/Cotizador ven desglose completo).")
+if not perms.can_view_costs:
+    st.info("Vista vendedor: ocultando desglose y snapshot.")
     st.stop()
 
-# Admin/Cotizador: detalle técnico
 st.divider()
 st.subheader("Detalle técnico (Admin/Cotizador)")
 
-inputs = row.get("inputs") or {}
-breakdown = row.get("breakdown") or {}
 snapshot = row.get("config_snapshot") or {}
 
 with st.expander("Inputs (lo que se capturó)", expanded=True):

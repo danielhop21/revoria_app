@@ -10,3 +10,7 @@ data/config.json
 
 # Secrets Streamlit (local)
 .streamlit/secrets.toml
+
+# Usuarios
+users.yaml
+

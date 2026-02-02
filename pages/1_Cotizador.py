@@ -4,6 +4,7 @@ import math
 import datetime as dt
 import secrets
 import string
+import copy
 
 import streamlit as st
 
@@ -14,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]  # carpeta revoria_app
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib.auth import require_role
+from lib.auth_users_yaml import require_login  # NUEVO
+from lib.permissions import permissions_for    # NUEVO
+
 from lib.supa import get_supabase
 from lib.config_store import get_config
 from lib.ui import (
@@ -28,7 +31,18 @@ from lib.ui import (
 # -------------------------------------------------
 st.set_page_config(page_title="Cotizador Revoria — Offset Santiago", layout="centered")
 inject_global_css()
-require_role({"admin", "sales"})
+
+# Login gate + permisos
+user = require_login()
+perms = permissions_for(user.role)
+
+# Back-compat: tu app venía usando st.session_state.auth
+# Esto evita que truene la parte de "Guardar cotización" y cualquier otra página legacy.
+st.session_state.auth = {
+    "is_logged": True,
+    "user": user.username,
+    "role": user.role,
+}
 
 render_header(
     "Cotizador Revoria",
@@ -86,27 +100,24 @@ cobertura_op = float(cfg["impresion"].get(
 ))
 
 cov_base = float(cfg["impresion"].get("cobertura_tinta_base_pct", 7.5))
-
 cov_base = max(cov_base, 0.0001)
 
-# Evitar división por cero
-cov_base = max(cov_base, 0.0001)
+# Solo admins/cotizadores ven config aplicada
+if perms.can_view_costs:
+    with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
+        st.write({
+            "MO+Dep (unit)": float(mo_dep),
+            "Tinta CMYK base (unit)": float(tinta_cmyk_base),
+            "Click base (unit)": float(click_base),
+            "Cobertura operativa (unit)": float(cobertura_op),
+            "Cobertura tinta base (%)": float(cov_base),
 
-with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
-    st.write({
-        "MO+Dep (unit)": float(mo_dep),
-        "Tinta CMYK base (unit)": float(tinta_cmyk_base),
-        "Click base (unit)": float(click_base),
-        "Cobertura operativa (unit)": float(cobertura_op),
-        "Cobertura tinta base (%)": float(cov_base),
-
-        "Tipo papel $/kg (Couché)": papel_costos_kg["Couché"],
-        "Tipo papel $/kg (Bond)": papel_costos_kg["Bond"],
-        "Tipo papel $/kg (Especial)": papel_costos_kg["Especial"],
-        "Merma papel": merma_papel,
-        "Margen": margen,
-    })
-
+            "Tipo papel $/kg (Couché)": papel_costos_kg["Couché"],
+            "Tipo papel $/kg (Bond)": papel_costos_kg["Bond"],
+            "Tipo papel $/kg (Especial)": papel_costos_kg["Especial"],
+            "Merma papel": merma_papel,
+            "Margen": margen,
+        })
 
 # ---------------------------------
 # Helpers
@@ -165,6 +176,67 @@ def make_quote_code() -> str:
     suffix = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
     return f"Q-{now:%Y%m%d-%H%M%S}-{suffix}"
 
+def build_text(perms, descripcion_producto, ancho_final, alto_final, piezas, tipo_producto,
+               lados, paginas, piezas_por_lado, orientacion, area_w, area_h, hoja_w, hoja_h,
+               costo_impresion, tipo_papel, papel_gramaje, papel_costo_kg, merma_papel, costo_papel,
+               total_adicionales, costos_adicionales, subtotal_costos, margen, precio_unitario, precio_total):
+    # Texto “cliente” por default
+    texto = (
+        f"Cotización Revoria\n"
+        f"- Tipo de producto: {descripcion_producto}\n"
+        f"- Medida final: {ancho_final:.2f} x {alto_final:.2f} cm\n"
+        f"- Tiraje: {piezas:,} {'pzas' if tipo_producto == 'Extendido' else 'libros'}\n"
+    )
+
+    if tipo_producto == "Extendido":
+        texto += f"- Impresión: {'Frente' if lados == 1 else 'Frente y vuelta'}\n"
+    else:
+        texto += f"- Páginas interiores por libro: {paginas}\n"
+
+    # Detalle no-sensible
+    texto += (
+        f"- Cubicación: {piezas_por_lado} por lado ({orientacion}) | Huella {area_w:.1f} x {area_h:.1f} cm\n"
+        f"- Hoja impresión: {hoja_w:.1f} x {hoja_h:.1f} cm\n"
+        f"- Papel: {tipo_papel} · {papel_gramaje:.0f} g/m²\n"
+    )
+
+    # Para admin/cotizador, agrega costos y desglose
+    if perms.can_view_costs:
+        texto += (
+            f"- Costo de impresión: ${costo_impresion:,.2f}\n"
+            f"- Papel: {tipo_papel} · {papel_gramaje:.0f} g/m² @ ${papel_costo_kg:,.2f}/kg (merma {merma_papel*100:.1f}%)\n"
+            f"- Costo de papel: ${costo_papel:,.2f}\n"
+        )
+
+        if total_adicionales > 0:
+            texto += "- Costos adicionales:\n"
+            for r in costos_adicionales:
+                concepto = str(r["Concepto"]).strip()
+                importe = float(r["Importe"])
+                if concepto and importe > 0:
+                    texto += f"  • {concepto}: ${importe:,.2f}\n"
+
+        texto += (
+            f"- Subtotal costos (antes de margen): ${subtotal_costos:,.2f}\n"
+            f"- Margen aplicado: {margen*100:.1f}%\n"
+        )
+    else:
+        # vendedor: si hay adicionales, solo listarlos como conceptos (sin decir “costos”)
+        if total_adicionales > 0:
+            texto += "- Conceptos adicionales:\n"
+            for r in costos_adicionales:
+                concepto = str(r["Concepto"]).strip()
+                importe = float(r["Importe"])
+                if concepto and importe > 0:
+                    texto += f"  • {concepto}: ${importe:,.2f}\n"
+
+    # Siempre: precios finales
+    texto += (
+        f"- Precio unitario: ${precio_unitario:,.4f}\n"
+        f"- Precio total: ${precio_total:,.2f}\n"
+    )
+    return texto
+
 
 # ---------------------------------
 # Inputs principales
@@ -182,7 +254,6 @@ factor_carta = factor_vs_carta(ancho_final, alto_final)
 st.caption(f"Factor vs Carta (por área): **{factor_carta:.4f}** (Carta=1.0000)")
 
 st.divider()
-
 
 # ---------------------------------
 # Parámetros de hoja/huella y cubicación (config por trabajo)
@@ -216,7 +287,6 @@ piezas_por_lado, orientacion, w_eff, h_eff = calc_piezas_por_lado(
 
 st.info(f"Cubicación estimada: **{piezas_por_lado} por lado** (orientación: **{orientacion}**)")
 
-
 # ---------------------------------
 # Restricciones por tipo de producto
 # ---------------------------------
@@ -243,7 +313,6 @@ if not restriccion_ok:
     st.error(motivo)
     st.stop()
 
-
 # ---------------------------------
 # Papel (inputs del usuario)
 # ---------------------------------
@@ -255,10 +324,14 @@ with colP2:
     papel_gramaje = st.number_input("Gramaje (g/m²)", min_value=40.0, value=150.0, step=5.0)
 
 papel_costo_kg = float(papel_costos_kg[tipo_papel])
-st.caption(f"Costo aplicado: **${papel_costo_kg:,.2f}/kg** · Merma: **{merma_papel*100:.1f}%**")
+
+# vendedor no debe ver costo/kg ni merma
+if perms.can_view_costs:
+    st.caption(f"Costo aplicado: **${papel_costo_kg:,.2f}/kg** · Merma: **{merma_papel*100:.1f}%**")
+else:
+    st.caption("Parámetros internos de papel aplicados automáticamente.")
 
 st.divider()
-
 
 # ---------------------------------
 # Inputs de tiraje y lógica de unidades / hojas
@@ -315,7 +388,6 @@ else:
     paginas_por_hoja_fyv = int(piezas_por_lado) * 2
     hojas_fisicas = math.ceil(int(paginas_totales) / max(paginas_por_hoja_fyv, 1))
 
-
 # ---------------------------------
 # Clicks: máquina vs facturable
 # ---------------------------------
@@ -327,11 +399,9 @@ else:
     clicks_maquina = int(hojas_fisicas) * 2              # tabloide-lado
     clicks_facturable = float(unidades_carta_lado)       # carta-lado
 
-
 # -------------------------
 # Selector de tintas (1 o 4)
 # -------------------------
-# (pon este input donde te convenga en UI)
 n_tintas = st.radio("Tintas", [4, 1], horizontal=True, format_func=lambda x: "CMYK (4)" if x == 4 else "1 tinta")
 
 factor_tintas = float(n_tintas) / 4.0
@@ -357,15 +427,13 @@ area_m2, peso_hoja_kg, costo_hoja = paper_cost_for_sheet(
     hoja_w, hoja_h, papel_gramaje, papel_costo_kg
 )
 
-# Merma aplicada en hojas enteras
 hojas_con_merma = math.ceil(hojas_fisicas * (1 + merma_papel))
 costo_papel = hojas_con_merma * costo_hoja
 
-
 # ---------------------------------
-# Costos adicionales (manuales) – UI estable
+# Costos adicionales (manuales)
 # ---------------------------------
-st.subheader("Costos adicionales (antes de margen)")
+st.subheader("Costos adicionales")
 
 if "costos_adicionales" not in st.session_state:
     st.session_state.costos_adicionales = [
@@ -411,7 +479,6 @@ for i, row in enumerate(st.session_state.costos_adicionales):
     if concepto:
         total_adicionales += importe
 
-
 # ---------------------------------
 # Subtotal y precio
 # ---------------------------------
@@ -419,14 +486,12 @@ subtotal_costos = costo_impresion + costo_papel + total_adicionales
 precio_total = subtotal_costos * (1 + margen)
 precio_unitario = precio_total / piezas
 
-
 # ---------------------------------
-# Resultados (section)
+# Resultados
 # ---------------------------------
 section_open()
 st.subheader("Resultados")
 
-# IMPORTANTES (grandes)
 cA, cB = st.columns(2)
 with cA:
     st.metric("Precio unitario", f"${precio_unitario:,.4f}")
@@ -435,7 +500,8 @@ with cB:
 
 hr()
 
-c1, c2, c3, c4, c5 = st.columns(5)
+# Métricas operativas: OK mostrarlas a vendedor (no son $)
+c1, c2, c3, c4 = st.columns(4)
 
 c1.markdown(f"""
 <div class="small-metric">
@@ -465,218 +531,195 @@ c4.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-c5.markdown(f"""
-<div class="small-metric">
-<b>Costo impresión</b><br>
-<span class="val">${costo_impresion:,.2f}</span>
-</div>
-""", unsafe_allow_html=True)
+# Métricas sensibles ($): solo admin/cotizador
+if perms.can_view_costs:
+    hr()
+    c5, c6, c7 = st.columns(3)
 
-hr()
+    c5.markdown(f"""
+    <div class="small-metric">
+    <b>Costo impresión</b><br>
+    <span class="val">${costo_impresion:,.2f}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Otra fila chica
-c5, c6, c7 = st.columns(3)
-c5.markdown(f"""
-<div class="small-metric">
-<b>Costos adicionales</b><br>
-<span class="val">${total_adicionales:,.2f}</span>
-</div>
-""", unsafe_allow_html=True)
+    c6.markdown(f"""
+    <div class="small-metric">
+    <b>Subtotal (antes margen)</b><br>
+    <span class="val">${subtotal_costos:,.2f}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-c6.markdown(f"""
-<div class="small-metric">
-<b>Subtotal (antes margen)</b><br>
-<span class="val">${subtotal_costos:,.2f}</span>
-</div>
-""", unsafe_allow_html=True)
-
-c7.markdown(f"""
-<div class="small-metric">
-<b>Margen aplicado</b><br>
-<span class="val">{margen*100:.1f}%</span>
-</div>
-""", unsafe_allow_html=True)
+    c7.markdown(f"""
+    <div class="small-metric">
+    <b>Margen aplicado</b><br>
+    <span class="val">{margen*100:.1f}%</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 section_close()
 
 st.divider()
 
+# ---------------------------------
+# Guardar cotización
+# ---------------------------------
 section_open()
 st.subheader("Guardar cotización")
 
-if "auth" not in st.session_state or not st.session_state.auth.get("is_logged", False):
-    st.warning("Inicia sesión desde Home para poder guardar cotizaciones.")
-else:
-    sb = get_supabase()
+sb = get_supabase()
 
-    if st.button("💾 Guardar cotización en historial"):
-        quote_code = make_quote_code()
-        created_by = st.session_state.auth.get("user")
-        created_role = st.session_state.auth.get("role")
+if st.button("💾 Guardar cotización en historial"):
+    quote_code = make_quote_code()
+    created_by = user.username
+    created_role = user.role
 
-        # Snapshot de configuración para que NO cambie el pasado
-        cfg_snapshot = copy.deepcopy(cfg)
+    cfg_snapshot = copy.deepcopy(cfg)
 
-        # Inputs (lo que el usuario metió)
-        inputs_payload = {
-            "tipo_producto": tipo_producto,
-            "ancho_final_cm": float(ancho_final),
-            "alto_final_cm": float(alto_final),
-            "factor_carta": float(factor_carta),
-            "hoja_w_cm": float(hoja_w),
-            "hoja_h_cm": float(hoja_h),
-            "area_w_cm": float(area_w),
-            "area_h_cm": float(area_h),
-            "bleed_cm": float(bleed),
-            "gutter_cm": float(gutter),
-            "allow_rotate": bool(allow_rotate),
-            "piezas_por_lado": int(piezas_por_lado),
-            "orientacion": orientacion,
+    inputs_payload = {
+        "tipo_producto": tipo_producto,
+        "ancho_final_cm": float(ancho_final),
+        "alto_final_cm": float(alto_final),
+        "factor_carta": float(factor_carta),
+        "hoja_w_cm": float(hoja_w),
+        "hoja_h_cm": float(hoja_h),
+        "area_w_cm": float(area_w),
+        "area_h_cm": float(area_h),
+        "bleed_cm": float(bleed),
+        "gutter_cm": float(gutter),
+        "allow_rotate": bool(allow_rotate),
+        "piezas_por_lado": int(piezas_por_lado),
+        "orientacion": orientacion,
 
-            # Papel (inputs del usuario)
-            "tipo_papel": tipo_papel,
-            "papel_gramaje_gm2": float(papel_gramaje),
-            "papel_costo_kg_aplicado": float(papel_costo_kg),
+        "tipo_papel": tipo_papel,
+        "papel_gramaje_gm2": float(papel_gramaje),
+        "papel_costo_kg_aplicado": float(papel_costo_kg),
 
-            "hojas_fisicas": int(hojas_fisicas),
+        "hojas_fisicas": int(hojas_fisicas),
+        "clicks_maquina": int(clicks_maquina),
+        "clicks_facturable": float(clicks_facturable),
+        "hojas_con_merma": int(hojas_con_merma),
+        "n_tintas": int(n_tintas),
+        "cobertura_tinta_base_pct": float(cov_base),
+    }
+
+    if tipo_producto == "Extendido":
+        inputs_payload.update({"tiraje_piezas": int(piezas), "lados": int(lados)})
+    else:
+        inputs_payload.update({
+            "tiraje_libros": int(libros),
+            "paginas_por_libro": int(paginas),
+            "paginas_totales": int(paginas_totales),
+            "lados": 2
+        })
+
+    costo_unitario_carta_lado = float(mo_dep + tinta_unit + click_unit + cobertura_op)
+
+    impresion_params = {
+        "n_tintas": int(n_tintas),
+        "factor_tintas": float(factor_tintas),
+        "cobertura_tinta_base_pct": float(cov_base),
+        "mo_dep_unit": float(mo_dep),
+        "tinta_unit": float(tinta_unit),
+        "click_unit": float(click_unit),
+        "cobertura_op_unit": float(cobertura_op),
+    }
+
+    breakdown_payload = {
+        "impresion": {
+            "unidades_carta_lado": float(unidades_carta_lado),
+            "costo_unitario_carta_lado": float(costo_unitario_carta_lado),
+            "formula_costo": "total = unidades_carta_lado * costo_unitario_carta_lado",
+            "total": float(costo_impresion),
+            "params": impresion_params,
             "clicks_maquina": int(clicks_maquina),
-            "clicks_facturable": float(clicks_facturable),
+            "formula_clicks_maquina": "clicks_maquina = hojas_fisicas * lados (extendido) | hojas_fisicas * 2 (libro)"
+        },
+
+        "papel": {
+            "tipo_papel": tipo_papel,
+            "gramaje_gm2": float(papel_gramaje),
+            "costo_kg": float(papel_costo_kg),
+            "hojas_fisicas": int(hojas_fisicas),
             "hojas_con_merma": int(hojas_con_merma),
-            "n_tintas": int(n_tintas),
-            "cobertura_tinta_base_pct": float(cov_base),
+            "costo_hoja": float(costo_hoja),
+            "merma": float(merma_papel),
+            "formula": "hojas_con_merma = ceil(hojas_fisicas * (1 + merma)); total = hojas_con_merma * costo_hoja",
+            "total": float(costo_papel),
+        },
 
+        "adicionales": {
+            "total": float(total_adicionales),
+            "formula": "total = suma(importes)",
+            "items": [
+                {"concepto": r.get("Concepto", ""), "importe": float(r.get("Importe", 0.0))}
+                for r in st.session_state.get("costos_adicionales", [])
+                if str(r.get("Concepto", "")).strip()
+            ]
+        },
+
+        "totales": {
+            "subtotal_antes_margen": float(subtotal_costos),
+            "margen": float(margen),
+            "precio_unitario": float(precio_unitario),
+            "precio_total": float(precio_total),
+            "formula_precio": "precio_total = subtotal_antes_margen * (1 + margen)"
         }
+    }
 
-        if tipo_producto == "Extendido":
-            inputs_payload.update({"tiraje_piezas": int(piezas), "lados": int(lados)})
-        else:
-            inputs_payload.update({
-                "tiraje_libros": int(libros),
-                "paginas_por_libro": int(paginas),
-                "paginas_totales": int(paginas_totales),
-                "lados": 2
-            })
+    row = {
+        "quote_code": quote_code,
+        "created_by": created_by,
+        "created_role": created_role,
+        "customer_name": None,
+        "notes": None,
+        "price_unit": float(precio_unitario),
+        "price_total": float(precio_total),
+        "currency": "MXN",
+        "inputs": inputs_payload,
+        "breakdown": breakdown_payload,
+        "config_snapshot": cfg_snapshot
+    }
 
-        # Costo unitario real por carta-lado (según n_tintas y cobertura vigente)
-        costo_unitario_carta_lado = float(mo_dep + tinta_unit + click_unit + cobertura_op)
-
-        # Guardar parámetros de impresión usados
-        impresion_params = {
-            "n_tintas": int(n_tintas),
-            "factor_tintas": float(factor_tintas),
-            "cobertura_tinta_base_pct": float(cov_base),
-            "mo_dep_unit": float(mo_dep),
-            "tinta_unit": float(tinta_unit),
-            "click_unit": float(click_unit),
-            "cobertura_op_unit": float(cobertura_op),
-        }
-
-
-        breakdown_payload = {
-            "impresion": {
-                "unidades_carta_lado": float(unidades_carta_lado),
-                "costo_unitario_carta_lado": float(costo_unitario_carta_lado),
-                "formula_costo": "total = unidades_carta_lado * costo_unitario_carta_lado",
-                "total": float(costo_impresion),
-                "params": impresion_params,
-
-                # Métrica operativa (NO facturable)
-                "clicks_maquina": int(clicks_maquina),
-                "formula_clicks_maquina": "clicks_maquina = hojas_fisicas * lados (extendido) | hojas_fisicas * 2 (libro)"
-            },
-
-            "papel": {
-                "tipo_papel": tipo_papel,
-                "gramaje_gm2": float(papel_gramaje),
-                "costo_kg": float(papel_costo_kg),
-
-                "hojas_fisicas": int(hojas_fisicas),
-                "hojas_con_merma": int(hojas_con_merma),
-                "costo_hoja": float(costo_hoja),
-                "merma": float(merma_papel),
-                "formula": "hojas_con_merma = ceil(hojas_fisicas * (1 + merma)); total = hojas_con_merma * costo_hoja",
-                "total": float(costo_papel),
-            },
-
-            "adicionales": {
-                "total": float(total_adicionales),
-                "formula": "total = suma(importes)",
-                "items": [
-                    {"concepto": r.get("Concepto", ""), "importe": float(r.get("Importe", 0.0))}
-                    for r in st.session_state.get("costos_adicionales", [])
-                    if str(r.get("Concepto", "")).strip()
-                ]
-            },
-
-            "totales": {
-                "subtotal_antes_margen": float(subtotal_costos),
-                "margen": float(margen),
-                "precio_unitario": float(precio_unitario),
-                "precio_total": float(precio_total),
-                "formula_precio": "precio_total = subtotal_antes_margen * (1 + margen)"
-            }
-        }
-
-        row = {
-            "quote_code": quote_code,
-            "created_by": created_by,
-            "created_role": created_role,
-            "customer_name": None,
-            "notes": None,
-            "price_unit": float(precio_unitario),
-            "price_total": float(precio_total),
-            "currency": "MXN",
-            "inputs": inputs_payload,
-            "breakdown": breakdown_payload,
-            "config_snapshot": cfg_snapshot
-        }
-
-        try:
-            sb.table("quotes").insert(row).execute()
-            st.success(f"Cotización guardada ✅ ID: {quote_code}")
-        except Exception as e:
-            st.error("No se pudo guardar en Supabase (revisa secrets / conexión).")
-            st.exception(e)
+    try:
+        sb.table("quotes").insert(row).execute()
+        st.success(f"Cotización guardada ✅ ID: {quote_code}")
+    except Exception as e:
+        st.error("No se pudo guardar en Supabase (revisa secrets / conexión).")
+        st.exception(e)
 
 section_close()
 
-
 # ---------------------------------
-# Texto copiable
+# Texto copiable (sanitizado por rol)
 # ---------------------------------
-texto = (
-    f"Cotización Revoria\n"
-    f"- Tipo de producto: {descripcion_producto}\n"
-    f"- Medida final: {ancho_final:.2f} x {alto_final:.2f} cm\n"
-    f"- Tiraje: {piezas:,} {'pzas' if tipo_producto == 'Extendido' else 'libros'}\n"
-)
-
-if tipo_producto == "Extendido":
-    texto += f"- Impresión: {'Frente' if lados == 1 else 'Frente y vuelta'}\n"
-else:
-    texto += f"- Páginas interiores por libro: {paginas}\n"
-
-texto += (
-    f"- Cubicación: {piezas_por_lado} por lado ({orientacion}) | Huella {area_w:.1f} x {area_h:.1f} cm\n"
-    f"- Hoja impresión: {hoja_w:.1f} x {hoja_h:.1f} cm\n"
-    f"- Costo de impresión: ${costo_impresion:,.2f}\n"
-    f"- Papel: {tipo_papel} · {papel_gramaje:.0f} g/m² @ ${papel_costo_kg:,.2f}/kg (merma {merma_papel*100:.1f}%)\n"
-    f"- Costo de papel: ${costo_papel:,.2f}\n"
-)
-
-if total_adicionales > 0:
-    texto += "- Costos adicionales:\n"
-    for r in st.session_state.costos_adicionales:
-        concepto = str(r["Concepto"]).strip()
-        importe = float(r["Importe"])
-        if concepto and importe > 0:
-            texto += f"  • {concepto}: ${importe:,.2f}\n"
-
-texto += (
-    f"- Subtotal costos (antes de margen): ${subtotal_costos:,.2f}\n"
-    f"- Margen aplicado: {margen*100:.1f}%\n"
-    f"- Precio unitario: ${precio_unitario:,.4f}\n"
-    f"- Precio total: ${precio_total:,.2f}\n"
+texto = build_text(
+    perms=perms,
+    descripcion_producto=descripcion_producto,
+    ancho_final=ancho_final,
+    alto_final=alto_final,
+    piezas=piezas,
+    tipo_producto=tipo_producto,
+    lados=locals().get("lados", 2),
+    paginas=paginas,
+    piezas_por_lado=piezas_por_lado,
+    orientacion=orientacion,
+    area_w=area_w,
+    area_h=area_h,
+    hoja_w=hoja_w,
+    hoja_h=hoja_h,
+    costo_impresion=costo_impresion,
+    tipo_papel=tipo_papel,
+    papel_gramaje=papel_gramaje,
+    papel_costo_kg=papel_costo_kg,
+    merma_papel=merma_papel,
+    costo_papel=costo_papel,
+    total_adicionales=total_adicionales,
+    costos_adicionales=st.session_state.costos_adicionales,
+    subtotal_costos=subtotal_costos,
+    margen=margen,
+    precio_unitario=precio_unitario,
+    precio_total=precio_total,
 )
 
 section_open()
