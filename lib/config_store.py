@@ -11,7 +11,26 @@ CONFIG_PATH = DATA_DIR / "config.json"
 
 # NUEVO DEFAULT: papel con costos por tipo (gramaje ya NO va en config)
 DEFAULT_CONFIG = {
-    "impresion": {"mo_dep": 0.06, "tinta": 0.39, "click": 0.35, "cobertura": 0.10},
+    "impresion": {
+        # base por carta-lado
+        "mo_dep": 0.06,
+
+        # costos calibrados a "cobertura base"
+        "tinta_cmyk_base": 0.39,
+        "click_base": 0.35,
+
+        # tu concepto fijo por carta-lado (antes "cobertura")
+        "cobertura_op": 0.10,
+
+        # % de cobertura de tinta
+        "cobertura_tinta_base_pct": 10.0,
+        "cobertura_tinta_pct": 10.0,
+
+        # legacy (los dejamos para no romper nada viejo)
+        "tinta": 0.39,
+        "click": 0.35,
+        "cobertura": 0.10,
+    },
     "papel": {
         "cuche_costo_kg": 21.0,
         "bond_costo_kg": 21.0,
@@ -58,11 +77,46 @@ def _normalize_config(cfg: dict, default: dict) -> dict:
     cfg.setdefault("papel", {})
     cfg.setdefault("margen", {})
 
-    # Impresión defaults (por si faltan)
-    cfg["impresion"].setdefault("mo_dep", default["impresion"]["mo_dep"])
-    cfg["impresion"].setdefault("tinta", default["impresion"]["tinta"])
-    cfg["impresion"].setdefault("click", default["impresion"]["click"])
-    cfg["impresion"].setdefault("cobertura", default["impresion"]["cobertura"])
+    # -------------------------
+    # Impresión: defaults + migración a llaves nuevas
+    # -------------------------
+    imp = cfg["impresion"]
+    def_imp = default["impresion"]
+
+    # Siempre asegurar mo_dep
+    imp.setdefault("mo_dep", def_imp.get("mo_dep", 0.0))
+
+    # Migrar cobertura_op (antes "cobertura")
+    if "cobertura_op" not in imp and "cobertura" in imp:
+        imp["cobertura_op"] = imp["cobertura"]
+    imp.setdefault("cobertura_op", def_imp.get("cobertura_op", def_imp.get("cobertura", 0.0)))
+
+    # Migrar tinta_cmyk_base (antes "tinta")
+    if "tinta_cmyk_base" not in imp and "tinta" in imp:
+        imp["tinta_cmyk_base"] = imp["tinta"]
+    imp.setdefault("tinta_cmyk_base", def_imp.get("tinta_cmyk_base", def_imp.get("tinta", 0.0)))
+
+    # Migrar click_base (antes "click")
+    if "click_base" not in imp and "click" in imp:
+        imp["click_base"] = imp["click"]
+    imp.setdefault("click_base", def_imp.get("click_base", def_imp.get("click", 0.0)))
+
+    # Cobertura de tinta (%): base + vigente
+    imp.setdefault("cobertura_tinta_base_pct", def_imp.get("cobertura_tinta_base_pct", 10.0))
+    imp.setdefault("cobertura_tinta_pct", imp["cobertura_tinta_base_pct"])
+
+    # Normalizar tipos (floats)
+    for k in ["mo_dep", "cobertura_op", "tinta_cmyk_base", "click_base", "cobertura_tinta_base_pct", "cobertura_tinta_pct"]:
+        try:
+            imp[k] = float(imp[k])
+        except Exception:
+            imp[k] = float(def_imp.get(k, 0.0))
+
+    # (Opcional) mantener legacy, no estorba
+    imp.setdefault("tinta", imp.get("tinta_cmyk_base", 0.0))
+    imp.setdefault("click", imp.get("click_base", 0.0))
+    imp.setdefault("cobertura", imp.get("cobertura_op", 0.0))
+
 
     # Papel: migrar desde estructura vieja si existía costo_kg
     legacy_costo = cfg["papel"].get("costo_kg", None)

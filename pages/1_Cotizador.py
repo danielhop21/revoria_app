@@ -58,16 +58,6 @@ for k in ("cuche_costo_kg", "bond_costo_kg", "especial_costo_kg", "merma"):
         st.error(f"Config incompleta: falta papel.{k}. Revisa Configuración/Secrets.")
         st.stop()
 
-mo_dep = float(cfg["impresion"]["mo_dep"])
-tinta = float(cfg["impresion"]["tinta"])
-click = float(cfg["impresion"]["click"])
-cobertura = float(cfg["impresion"]["cobertura"])
-
-mo_dep = float(cfg["impresion"]["mo_dep"])
-tinta = float(cfg["impresion"]["tinta"])
-click = float(cfg["impresion"]["click"])
-cobertura = float(cfg["impresion"]["cobertura"])
-
 # Papel: costos por tipo (CONFIG). Gramaje lo alimenta el usuario en cotización.
 papel_costos_kg = {
     "Couché": float(cfg["papel"]["cuche_costo_kg"]),
@@ -78,16 +68,43 @@ merma_papel = float(cfg["papel"]["merma"])
 
 margen = float(cfg["margen"]["margen"])
 
+# -------------------------
+# Parámetros (desde cfg)
+# -------------------------
+mo_dep = float(cfg["impresion"]["mo_dep"])
+
+tinta_cmyk_base = float(cfg["impresion"].get(
+    "tinta_cmyk_base", cfg["impresion"].get("tinta", 0.0)
+))
+
+click_base = float(cfg["impresion"].get(
+    "click_base", cfg["impresion"].get("click", 0.0)
+))
+
+cobertura_op = float(cfg["impresion"].get(
+    "cobertura_op", cfg["impresion"].get("cobertura", 0.0)
+))
+
+cov_base = float(cfg["impresion"].get("cobertura_tinta_base_pct", 10.0))
+cov_pct  = float(cfg["impresion"].get("cobertura_tinta_pct", cov_base))
+
+cov_base = max(cov_base, 0.0001)
+
+# Evitar división por cero
+cov_base = max(cov_base, 0.0001)
 
 with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
     st.write({
-        "MO+Dep": mo_dep,
-        "Tinta": tinta,
-        "Click": click,
-        "Cobertura": cobertura,
-        "Papel $/kg (Couché)": papel_costos_kg["Couché"],
-        "Papel $/kg (Bond)": papel_costos_kg["Bond"],
-        "Papel $/kg (Especial)": papel_costos_kg["Especial"],
+        "MO+Dep (unit)": float(mo_dep),
+        "Tinta CMYK base (unit)": float(tinta_cmyk_base),
+        "Click base (unit)": float(click_base),
+        "Cobertura operativa (unit)": float(cobertura_op),
+        "Cobertura tinta base (%)": float(cov_base),
+        "Cobertura tinta vigente (%)": float(cov_pct),
+
+        "Tipo papel $/kg (Couché)": papel_costos_kg["Couché"],
+        "Tipo papel $/kg (Bond)": papel_costos_kg["Bond"],
+        "Tipo papel $/kg (Especial)": papel_costos_kg["Especial"],
         "Merma papel": merma_papel,
         "Margen": margen,
     })
@@ -313,15 +330,27 @@ else:
     clicks_facturable = float(unidades_carta_lado)       # carta-lado
 
 
-# ---------------------------------
-# Costos impresión
-# ---------------------------------
-costo_mo_dep = unidades_carta_lado * mo_dep
-costo_tinta = unidades_carta_lado * tinta
-costo_click = unidades_carta_lado * click
-costo_cobertura = unidades_carta_lado * cobertura
-costo_impresion = costo_mo_dep + costo_tinta + costo_click + costo_cobertura
+# -------------------------
+# Selector de tintas (1 o 4)
+# -------------------------
+# (pon este input donde te convenga en UI)
+n_tintas = st.radio("Tintas", [4, 1], horizontal=True, format_func=lambda x: "CMYK (4)" if x == 4 else "1 tinta")
 
+factor_tintas = float(n_tintas) / 4.0
+factor_cobertura = cov_pct / cov_base
+
+tinta_unit = tinta_cmyk_base * factor_tintas * factor_cobertura
+click_unit = click_base      * factor_tintas * factor_cobertura
+
+# -------------------------
+# Costos impresión
+# -------------------------
+costo_mo_dep = unidades_carta_lado * mo_dep
+costo_tinta  = unidades_carta_lado * tinta_unit
+costo_click  = unidades_carta_lado * click_unit
+costo_cobertura_op = unidades_carta_lado * cobertura_op
+
+costo_impresion = costo_mo_dep + costo_tinta + costo_click + costo_cobertura_op
 
 # ---------------------------------
 # Costo papel (siempre hoja de impresión)
@@ -488,7 +517,7 @@ else:
         created_role = st.session_state.auth.get("role")
 
         # Snapshot de configuración para que NO cambie el pasado
-        cfg_snapshot = cfg
+        cfg_snapshot = copy.deepcopy(cfg)
 
         # Inputs (lo que el usuario metió)
         inputs_payload = {
@@ -515,6 +544,9 @@ else:
             "clicks_maquina": int(clicks_maquina),
             "clicks_facturable": float(clicks_facturable),
             "hojas_con_merma": int(hojas_con_merma),
+            "n_tintas": int(n_tintas),
+            "cobertura_tinta_pct": float(cov_pct),
+
         }
 
         if tipo_producto == "Extendido":
@@ -527,8 +559,22 @@ else:
                 "lados": 2
             })
 
-        # Breakdown con “fórmulas de 2 variables”
-        costo_unitario_carta_lado = float(mo_dep + tinta + click + cobertura)
+        # Costo unitario real por carta-lado (según n_tintas y cobertura vigente)
+        costo_unitario_carta_lado = float(mo_dep + tinta_unit + click_unit + cobertura_op)
+
+        # Guardar parámetros de impresión usados
+        impresion_params = {
+            "n_tintas": int(n_tintas),
+            "factor_tintas": float(factor_tintas),
+            "cobertura_tinta_base_pct": float(cov_base),
+            "cobertura_tinta_pct": float(cov_pct),
+            "factor_cobertura": float(factor_cobertura),
+            "mo_dep_unit": float(mo_dep),
+            "tinta_unit": float(tinta_unit),
+            "click_unit": float(click_unit),
+            "cobertura_op_unit": float(cobertura_op),
+        }
+
 
         breakdown_payload = {
             "impresion": {
@@ -536,6 +582,7 @@ else:
                 "costo_unitario_carta_lado": float(costo_unitario_carta_lado),
                 "formula_costo": "total = unidades_carta_lado * costo_unitario_carta_lado",
                 "total": float(costo_impresion),
+                "params": impresion_params,
 
                 # Métrica operativa (NO facturable)
                 "clicks_maquina": int(clicks_maquina),
