@@ -85,8 +85,7 @@ cobertura_op = float(cfg["impresion"].get(
     "cobertura_op", cfg["impresion"].get("cobertura", 0.0)
 ))
 
-cov_base = float(cfg["impresion"].get("cobertura_tinta_base_pct", 10.0))
-cov_pct  = float(cfg["impresion"].get("cobertura_tinta_pct", cov_base))
+cov_base = float(cfg["impresion"].get("cobertura_tinta_base_pct", 7.5))
 
 cov_base = max(cov_base, 0.0001)
 
@@ -337,7 +336,7 @@ else:
 n_tintas = st.radio("Tintas", [4, 1], horizontal=True, format_func=lambda x: "CMYK (4)" if x == 4 else "1 tinta")
 
 factor_tintas = float(n_tintas) / 4.0
-factor_cobertura = cov_pct / cov_base
+factor_cobertura = 1.0
 
 tinta_unit = tinta_cmyk_base * factor_tintas * factor_cobertura
 click_unit = click_base      * factor_tintas * factor_cobertura
@@ -545,7 +544,7 @@ else:
             "clicks_facturable": float(clicks_facturable),
             "hojas_con_merma": int(hojas_con_merma),
             "n_tintas": int(n_tintas),
-            "cobertura_tinta_pct": float(cov_pct),
+            "cobertura_tinta_base_pct": float(cov_base),
 
         }
 
@@ -567,8 +566,6 @@ else:
             "n_tintas": int(n_tintas),
             "factor_tintas": float(factor_tintas),
             "cobertura_tinta_base_pct": float(cov_base),
-            "cobertura_tinta_pct": float(cov_pct),
-            "factor_cobertura": float(factor_cobertura),
             "mo_dep_unit": float(mo_dep),
             "tinta_unit": float(tinta_unit),
             "click_unit": float(click_unit),

@@ -42,7 +42,6 @@ if "click_base" not in cfg["impresion"] and "click" in cfg["impresion"]:
 
 # Defaults de cobertura (%)
 cfg["impresion"].setdefault("cobertura_tinta_base_pct", 10.0)
-cfg["impresion"].setdefault("cobertura_tinta_pct", float(cfg["impresion"]["cobertura_tinta_base_pct"]))
 
 cfg["impresion"]["mo_dep"] = st.number_input(
     "MO + Depreciación",
@@ -79,22 +78,16 @@ cfg["impresion"]["cobertura_op"] = st.number_input(
 st.markdown("---")
 st.subheader("Cobertura de tinta (%)")
 
-cfg["impresion"]["cobertura_tinta_base_pct"] = st.number_input(
-    "Cobertura base (%)",
-    min_value=0.1,
-    value=float(cfg["impresion"]["cobertura_tinta_base_pct"]),
-    step=0.1,
-    format="%.2f",
-    help="Cobertura con la que fueron calibrados tinta_base y click_base."
-)
+st.markdown("---")
+st.subheader("Cobertura de tinta")
 
-cfg["impresion"]["cobertura_tinta_pct"] = st.number_input(
-    "Cobertura vigente (%)",
+cfg["impresion"]["cobertura_tinta_base_pct"] = st.number_input(
+    "Cobertura base real (%)",
     min_value=0.1,
-    value=float(cfg["impresion"]["cobertura_tinta_pct"]),
+    value=float(cfg["impresion"].get("cobertura_tinta_base_pct", 7.5)),
     step=0.1,
     format="%.2f",
-    help="Si cambias esto, se ajustan tinta y click; MO y cobertura operativa no."
+    help="Porcentaje real promedio con el que están calibrados tinta_cmyk_base y click_base (ej. 7.5%)."
 )
 
 st.divider()

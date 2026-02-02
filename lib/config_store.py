@@ -23,8 +23,7 @@ DEFAULT_CONFIG = {
         "cobertura_op": 0.10,
 
         # % de cobertura de tinta
-        "cobertura_tinta_base_pct": 10.0,
-        "cobertura_tinta_pct": 10.0,
+        "cobertura_tinta_base_pct": 7.5,
 
         # legacy (los dejamos para no romper nada viejo)
         "tinta": 0.39,
@@ -101,16 +100,17 @@ def _normalize_config(cfg: dict, default: dict) -> dict:
         imp["click_base"] = imp["click"]
     imp.setdefault("click_base", def_imp.get("click_base", def_imp.get("click", 0.0)))
 
-    # Cobertura de tinta (%): base + vigente
-    imp.setdefault("cobertura_tinta_base_pct", def_imp.get("cobertura_tinta_base_pct", 10.0))
-    imp.setdefault("cobertura_tinta_pct", imp["cobertura_tinta_base_pct"])
+    # Cobertura de tinta (%): una sola base real (calibración)
+    imp.setdefault("cobertura_tinta_base_pct", def_imp.get("cobertura_tinta_base_pct", 7.5))
+
 
     # Normalizar tipos (floats)
-    for k in ["mo_dep", "cobertura_op", "tinta_cmyk_base", "click_base", "cobertura_tinta_base_pct", "cobertura_tinta_pct"]:
+    for k in ["mo_dep", "cobertura_op", "tinta_cmyk_base", "click_base", "cobertura_tinta_base_pct"]:
         try:
             imp[k] = float(imp[k])
         except Exception:
             imp[k] = float(def_imp.get(k, 0.0))
+        imp.pop("cobertura_tinta_pct", None)
 
     # (Opcional) mantener legacy, no estorba
     imp.setdefault("tinta", imp.get("tinta_cmyk_base", 0.0))
