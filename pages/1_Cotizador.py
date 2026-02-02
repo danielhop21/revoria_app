@@ -99,7 +99,6 @@ with st.expander("Ver configuración aplicada (solo lectura)", expanded=False):
         "Click base (unit)": float(click_base),
         "Cobertura operativa (unit)": float(cobertura_op),
         "Cobertura tinta base (%)": float(cov_base),
-        "Cobertura tinta vigente (%)": float(cov_pct),
 
         "Tipo papel $/kg (Couché)": papel_costos_kg["Couché"],
         "Tipo papel $/kg (Bond)": papel_costos_kg["Bond"],
