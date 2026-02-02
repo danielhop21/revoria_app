@@ -199,7 +199,11 @@ if search_user != "(Todos)" and "created_by" in df.columns:
 df_show = df.copy()
 
 if "created_at" in df_show.columns:
-    df_show["created_at"] = pd.to_datetime(df_show["created_at"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+    df_show["created_at"] = (
+        pd.to_datetime(df_show["created_at"], utc=True, errors="coerce")
+        .dt.tz_convert("America/Mexico_City")
+        .dt.strftime("%Y-%m-%d %H:%M")
+    )
 
 if "price_unit" in df_show.columns:
     df_show["price_unit"] = df_show["price_unit"].apply(money)
