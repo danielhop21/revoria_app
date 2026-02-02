@@ -41,7 +41,7 @@ if "click_base" not in cfg["impresion"] and "click" in cfg["impresion"]:
     cfg["impresion"]["click_base"] = cfg["impresion"]["click"]
 
 # Defaults de cobertura (%)
-cfg["impresion"].setdefault("cobertura_tinta_base_pct", 10.0)
+cfg["impresion"].setdefault("cobertura_tinta_base_pct", 7.5)
 
 cfg["impresion"]["mo_dep"] = st.number_input(
     "MO + Depreciación",
@@ -226,8 +226,8 @@ def diff_any(old, new, prefix=""):
     )
 
     # Confirmación adicional: cobertura base
-    base_old = float(cfg_original.get("impresion", {}).get("cobertura_tinta_base_pct", 10.0))
-    base_new = float(cfg.get("impresion", {}).get("cobertura_tinta_base_pct", 10.0))
+    base_old = float(cfg_original.get("impresion", {}).get("cobertura_tinta_base_pct", 7.5))
+    base_new = float(cfg.get("impresion", {}).get("cobertura_tinta_base_pct", 7.5))
     cambio_base = _changed(base_old, base_new)
 
     confirm_base = True
