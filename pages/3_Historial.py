@@ -113,10 +113,32 @@ def fetch_quotes(limit: int = 200, only_mine: bool = False):
     res = q.execute()
     return res.data or []
 
-def fetch_quote_detail(quote_code: str) -> Optional[Dict[str, Any]]:
-    res = sb.table("quotes").select("*").eq("quote_code", quote_code).limit(1).execute()
-    data = getattr(res, "data", None) or []
-    return data[0] if data else None
+from postgrest.exceptions import APIError
+
+def fetch_quote_detail(quote_code: str):
+    try:
+        res = (
+            sb.table("quotes")
+            .select("*")
+            .eq("quote_code", quote_code)
+            .limit(1)
+            .execute()
+        )
+        data = getattr(res, "data", None) or []
+        return data[0] if data else None
+
+    except APIError as e:
+        st.error("Supabase rechazó la consulta al abrir detalle.")
+        # PostgREST suele traer un dict con message/details/hint
+        st.write("Detalle del error (APIError):")
+        st.json(getattr(e, "message", None) or getattr(e, "args", None) or {"error": str(e)})
+        return None
+
+    except Exception as e:
+        st.error("Error inesperado al abrir detalle.")
+        st.exception(e)
+        return None
+
 
 
 # -----------------------------
@@ -238,7 +260,7 @@ if not perms.can_view_costs:
     # vendedor: pasamos payload sanitizado al exporter para evitar fugas involuntarias
     row_for_pdf = sanitize_row_for_vendedor(row)
 
-pdf_bytes = build_quote_pdf_bytes(row_for_pdf)  # PDF cliente: permitido para todos
+pdf_bytes = build_quote_pdf_bytes(row) # PDF cliente: permitido para todos
 
 excel_bytes = None
 if perms.can_export_tech:
