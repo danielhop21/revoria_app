@@ -1,0 +1,99 @@
+{
+  "impresion": {
+    "mo_dep": 0.06,
+    "tinta": 0.39,
+    "click": 0.35,
+    "cobertura": 0.1,
+    "cobertura_op": 0.1,
+    "tinta_cmyk_base": 0.39,
+    "click_base": 0.35,
+    "cobertura_tinta_base_pct": 7.5
+  },
+  "papel": {
+    "costo_kg": 21.0,
+    "gramaje": 130.0,
+    "merma": 0.1,
+    "cuche_costo_kg": 21.0,
+    "bond_costo_kg": 21.0,
+    "especial_costo_kg": 40.0
+  },
+  "margen": {
+    "margen": 0.4
+  },
+  "acabados": [
+    {
+      "display_name": "Barniz UV",
+      "key": "barniz_uv",
+      "basis": "sheet_m2_total",
+      "calc_type": "min_or_unit",
+      "rate": 1.3,
+      "setup": 0.0,
+      "minimum": 1400.0,
+      "qty_rounding": "none",
+      "allow_partial": false,
+      "requires": []
+    },
+    {
+      "display_name": "Doblado",
+      "key": "doblado",
+      "basis": "sheets_total",
+      "calc_type": "min_or_unit",
+      "rate": 1.5,
+      "setup": 0.0,
+      "minimum": 250.0,
+      "qty_rounding": "none",
+      "allow_partial": false,
+      "requires": [
+        "folds_per_sheet"
+      ]
+    },
+    {
+      "display_name": "Guillotina",
+      "key": "guillotina",
+      "basis": "pieces_total",
+      "calc_type": "min_or_unit",
+      "rate": 0.25,
+      "setup": 0.0,
+      "minimum": 200.0,
+      "qty_rounding": "ceil_1000",
+      "allow_partial": false,
+      "requires": []
+    },
+    {
+      "display_name": "Grapa",
+      "key": "grapa",
+      "basis": "pieces_total",
+      "calc_type": "min_or_unit",
+      "rate": 1.5,
+      "setup": 500.0,
+      "minimum": 0.0,
+      "qty_rounding": "none",
+      "allow_partial": false,
+      "requires": []
+    },
+    {
+      "display_name": "Hot melt",
+      "key": "hot_melt",
+      "basis": "pieces_total",
+      "calc_type": "setup_plus_unit",
+      "rate": 2.0,
+      "setup": 500.0,
+      "minimum": 0.0,
+      "qty_rounding": "none",
+      "allow_partial": false,
+      "requires": []
+    },
+    {
+      "display_name": "Hot stamping",
+      "key": "hot_stamping",
+      "basis": "sheet_m2_total",
+      "calc_type": "min_or_unit",
+      "rate": 2.5,
+      "setup": 0.0,
+      "minimum": 1600.0,
+      "qty_rounding": "none",
+      "allow_partial": false,
+      "requires": []
+    }
+  ]
+}

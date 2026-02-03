@@ -50,6 +50,15 @@ def _load_json(path: Path) -> Optional[Dict[str, Any]]:
 
 def _write_json(path: Path, data: dict) -> None:
     _ensure_data_dir()
+
+    # backup simple
+    if path.exists():
+        bak = path.with_suffix(path.suffix + ".bak")
+        try:
+            bak.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        except Exception:
+            pass
+
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def _get_default_config() -> dict:

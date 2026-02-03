@@ -3,6 +3,7 @@ from pathlib import Path
 import copy
 import re
 import unicodedata
+import json
 
 import streamlit as st
 
@@ -120,6 +121,7 @@ render_header(
     "Configuración",
     "Costos base (admin): impresión, papel, acabados y margen"
 )
+
 
 # -------------------------------------------------
 # Load config + defaults defensivos
@@ -717,6 +719,45 @@ cfg["margen"]["margen"] = st.number_input(
 )
 
 st.divider()
+# -------------------------------------------------
+# Exportar / importar config (JSON)
+# -------------------------------------------------
+
+with st.expander("Respaldo de configuración (Admin)", expanded=False):
+
+    st.caption(
+        "Usa esta sección solo para respaldar o restaurar la configuración "
+        "en caso de reinicio del servidor (Streamlit Cloud)."
+    )
+
+    colA, colB = st.columns(2)
+
+    with colA:
+        cfg_export = json.dumps(cfg, ensure_ascii=False, indent=2).encode("utf-8")
+        st.download_button(
+            "⬇️ Descargar config (JSON)",
+            data=cfg_export,
+            file_name="config.json",
+            mime="application/json",
+            key="cfg_export_btn",
+        )
+
+    with colB:
+        up = st.file_uploader(
+            "⬆️ Importar config (JSON)",
+            type=["json"],
+            key="cfg_import_uploader",
+        )
+        if up is not None:
+            try:
+                imported = json.loads(up.read().decode("utf-8"))
+                if not isinstance(imported, dict):
+                    raise ValueError("JSON inválido")
+                save_config(imported)
+                st.success("Configuración importada y guardada ✅")
+                st.rerun()
+            except Exception as e:
+                st.error(f"No se pudo importar: {e}")
 
 # -------------------------------------------------
 # Diffs + confirmaciones + guardado
