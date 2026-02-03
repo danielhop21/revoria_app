@@ -12,5 +12,6 @@ data/config.json
 .streamlit/secrets.toml
 
 # Usuarios
-users.yaml
+!users.yaml
+
 

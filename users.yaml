@@ -1,0 +1,39 @@
+dhop:
+  display_name: "Daniel Hop"
+  role: "admin"
+  password_hash: "$2b$12$BsE5pggnC1rzQUNtQcgUxuA4IbRMcof45aHrvsFN2j3FjI36GEmq6"
+
+mhopm:
+  display_name: "Marco Hop M"
+  role: "cotizaciones"
+  password_hash: "$2b$12$T7IDGF87XU7Xh7xzLIg0cOG7ZbkrS8ZvvQqdmT7uBoir44uOLOH/W"
+
+mhoph:
+  display_name: "Marco Hop H"
+  role: "admin"
+  password_hash: "$2b$12$yTR5VT1.kuUoSZuE.lqhcedYUZsg1tkoLLi4v7jF7VOAsjHjPGUjy"
+
+hgallo:
+  display_name: "Hector Gallo"
+  role: "admin"
+  password_hash: "$2b$12$LMT2X7ZEFxktEu3WMw3MG.HND0Q62c8HCKNojAvnJrCIw67dXu4GC"
+
+aperez:
+  display_name: "Araceli Perez"
+  role: "admin"
+  password_hash: "$2b$12$nb.OPNi.ZI7siwfL6f.iFuC6kqpvrPv9jKVTIEo3pqFriHo9DQDS6"
+
+btorres:
+  display_name: "Bianca Torres"
+  role: "cotizaciones"
+  password_hash: "$2b$12$G0e9iIidD5aG51lYAXIMX.t8zD4OEbzQpodIrqwvAHmaD.ZDWg1hm"
+
+tarellano:
+  display_name: "Tanira Arellano"
+  role: "ventas"
+  password_hash: "$2b$12$830AQKTFWchXHJ2qBn/tEO2rh7OhUI2LkrwxipdO.K1xC0bb8NQAe"
+
+kturok:
+  display_name: "Kipi Turok"
+  role: "cotizaciones"
+  password_hash: "$2b$12$wZ4w7yz94y.EQasXvhWTj.MDz92m23eYuHligBDEHNhphQ3SQvq6G"
