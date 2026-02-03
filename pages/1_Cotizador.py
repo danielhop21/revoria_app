@@ -652,7 +652,7 @@ def _add_manual_acabado():
 with st.form("form_manual_acabado", clear_on_submit=False):
     cM1, cM2, cM3 = st.columns([3, 2, 1])
     with cM1:
-        st.text_input("Nombre", key="manual_acab_nombre")
+        st.text_input("Acabado", key="manual_acab_nombre")
     with cM2:
         st.number_input("Importe total ($)", min_value=0.0, step=1.0, key="manual_acab_total")
     with cM3:
