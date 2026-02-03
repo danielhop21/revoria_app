@@ -21,26 +21,29 @@ class User:
 
 def _load_users() -> Dict[str, Any]:
     """
-    Fuente preferida: st.secrets["users"] (dict TOML).
-    Fallback opcional: users.yaml en raíz.
+    Fuente preferida: users.yaml en raíz.
+    Fallback: st.secrets["users"] (si algún día quieres usarlo).
     Normaliza a {"users": {username: {...}}}.
     """
-    # 1) Preferir secrets.toml / Streamlit Cloud Secrets
-    try:
-        if "users" in st.secrets:
-            users = dict(st.secrets["users"])
-            return {"users": users}
-    except Exception:
-        # Si por alguna razón st.secrets falla, seguimos al fallback
-        pass
-
-    # 2) Fallback a users.yaml
+    # 1) Preferir users.yaml
     if USERS_PATH.exists():
         with USERS_PATH.open("r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {"users": {}}
+            doc = yaml.safe_load(f) or {}
+
+        # Si viene en formato plano (dhop: {...}) lo normalizamos
+        if "users" not in doc:
+            doc = {"users": doc}
+
+        return doc
+
+    # 2) Fallback a secrets
+    try:
+        if "users" in st.secrets:
+            return {"users": dict(st.secrets["users"])}
+    except Exception:
+        pass
 
     return {"users": {}}
-
 
 def _verify_password(password: str, entry: Dict[str, Any]) -> bool:
     """
@@ -106,14 +109,18 @@ def require_login() -> User:
                 if not ok:
                     st.session_state["auth_error"] = "Password incorrecto."
                 else:
-                    role = (entry.get("role", "vendedor") or "").strip().lower()
-                    # compat si alguien dejó "sales" por ahí
+                    role = (entry.get("role", "ventas") or "").strip().lower()
+                    
+                    # compat legacy
                     if role == "sales":
-                        role = "vendedor"
+                        role = "ventas"
+                    if role == "vendedor":
+                        role = "ventas"
+
 
                     st.session_state["user"] = {
                         "username": username,
-                        "name": entry.get("name", username),
+                        "name": entry.get("name") or entry.get("display_name") or username,
                         "role": role,
                     }
                     st.session_state.pop("auth_error", None)
